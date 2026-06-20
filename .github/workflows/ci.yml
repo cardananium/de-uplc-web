@@ -5,12 +5,13 @@ on:
     branches: [main]
   pull_request:
 
-# The Rust→WASM engine (packages/engine-wasm/pkg) is NO LONGER committed — the `check`
-# job builds it from rust-src on stable Rust (wasm-pack --target web; on Linux the distro
-# clang has the wasm backend, so no toolchain override is needed) and uploads it as an
-# artifact. The `e2e` job downloads that artifact instead of rebuilding, so Rust is set up
-# only once per run. Rebuild locally with `npm run build:wasm` (the dev/build prebuild
-# guard does this automatically when pkg/ is missing).
+# The Rust→WASM engine (packages/engine-wasm/pkg) is NOT committed — the `check` job builds it
+# from rust-src on stable Rust (wasm-pack --target web; on Linux the distro clang has the wasm
+# backend, so no toolchain override is needed). Rebuild locally with `npm run build:wasm` (the
+# dev/build prebuild guard does this automatically when pkg/ is missing).
+#
+# NOTE: the headless-Chrome E2E job is temporarily removed — the apps/web/e2e suite is gitignored
+# for now. Re-add the job (and un-ignore apps/web/e2e) once the suite is committed.
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -22,7 +23,7 @@ jobs:
           node-version: 20
           cache: npm
 
-      # --- Build the engine WASM (no longer committed) ---
+      # --- Build the engine WASM (not committed) ---
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -34,11 +35,6 @@ jobs:
           workspaces: rust-src
       - name: Build engine WASM
         run: npm run build:wasm
-      - uses: actions/upload-artifact@v4
-        with:
-          name: engine-wasm-pkg
-          path: packages/engine-wasm/pkg
-          if-no-files-found: error
 
       - run: npm ci
 
@@ -59,31 +55,3 @@ jobs:
           name: web-dist
           path: apps/web/dist
           if-no-files-found: error
-
-  # Headless-Chrome E2E (the only thing exercising the real run loop + breakpoints +
-  # lazy `_path` handles + Monaco). `npm run e2e` runs ALL suites: m6-headless (term
-  # editor + run lifecycle), lazy-headless (the lazy machineState/context/env/value/
-  # constant trees + NodeExplorer tab + deep search), program-headless and context-headless.
-  # Required on PRs so a regression there can't ship green. Reuses the engine WASM built
-  # by `check` (downloaded below) — no Rust toolchain in this job.
-  e2e:
-    needs: check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - name: Restore engine WASM (built in `check`)
-        uses: actions/download-artifact@v4
-        with:
-          name: engine-wasm-pkg
-          path: packages/engine-wasm/pkg
-      - name: Install headless Chrome
-        run: npx puppeteer browsers install chrome-headless-shell
-      - name: Build web
-        run: npm run build:web
-      - name: E2E (headless Chrome)
-        run: npm run e2e
