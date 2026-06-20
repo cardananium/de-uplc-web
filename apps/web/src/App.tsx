@@ -7,6 +7,7 @@ import { applyMonacoTheme } from './editor/theme';
 import { TransportControls } from './panels/TransportControls';
 import { SettingsModal } from './panels/SettingsModal';
 import { ShareModal } from './panels/ShareModal';
+import { WelcomeModal, shouldShowWelcome, markWelcomeSeen } from './panels/WelcomeModal';
 import { Codicon } from './components/Codicon';
 import { DebuggerView } from './panels/DebuggerView';
 import { resolveUrlLaunch } from './url-launch';
@@ -23,6 +24,10 @@ export function App() {
   const canShare = scriptOnly || !!txId;
   const setTheme = useSettings((s) => s.set);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // First-run intro: once, and only on a clean entry (no deep-link hash/query). Decided synchronously
+  // on first render so a deep-link visit never flashes the welcome before the launch effect runs.
+  const [welcomeOpen, setWelcomeOpen] = useState(shouldShowWelcome);
+  useEffect(() => { if (welcomeOpen) markWelcomeSeen(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply the resolved theme to <html> + Monaco; re-resolve when the OS theme changes on 'system'.
   useEffect(() => {
@@ -126,6 +131,7 @@ export function App() {
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} />
+      <WelcomeModal open={welcomeOpen} onClose={() => setWelcomeOpen(false)} onLoadSample={() => void loadSample()} />
     </div>
   );
 }
