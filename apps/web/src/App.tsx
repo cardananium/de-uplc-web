@@ -8,6 +8,7 @@ import { TransportControls } from './panels/TransportControls';
 import { SettingsModal } from './panels/SettingsModal';
 import { ShareModal } from './panels/ShareModal';
 import { WelcomeModal, shouldShowWelcome, markWelcomeSeen } from './panels/WelcomeModal';
+import { GitHubStars } from './components/GitHubStars';
 import { Codicon } from './components/Codicon';
 import { DebuggerView } from './panels/DebuggerView';
 import { resolveUrlLaunch } from './url-launch';
@@ -101,6 +102,7 @@ export function App() {
             <Codicon name="link" />
           </button>
         )}
+        <GitHubStars />
         <button
           className="chrome-button"
           title={`Theme: ${theme} (click to cycle)`}
