@@ -61,7 +61,7 @@ export function App() {
 
   const loadSample = async () => {
     try {
-      const txt = await (await fetch('/sample/test-tx.json')).text();
+      const txt = await (await fetch(`${import.meta.env.BASE_URL}sample/test-tx.json`)).text();
       await load(txt, 'test-tx.json');
     } catch (e) {
       toast.error(`Failed to load sample: ${e instanceof Error ? e.message : String(e)}`);

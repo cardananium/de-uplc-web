@@ -1,0 +1,60 @@
+name: Deploy (GitHub Pages)
+
+# Builds the static app and publishes it to GitHub Pages on every push to main.
+# One-time setup in the repo: Settings → Pages → Source = "GitHub Actions".
+# The app is served from a project subpath, so the build uses --base=/de-uplc-web/
+# (matches https://cardananium.github.io/de-uplc-web/). For a custom domain / org-root
+# page, drop the --base flag (base defaults to "/").
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One in-flight deploy at a time; let a newer push supersede an older run.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Build the Rust→WASM engine (not committed), same as CI.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-src
+      - name: Build engine WASM
+        run: npm run build:wasm
+
+      - run: npm ci
+
+      - name: Build web (project-page base)
+        run: npm run build:web -- --base=/de-uplc-web/
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

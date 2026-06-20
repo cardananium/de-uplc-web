@@ -20,7 +20,7 @@ window.addEventListener('unhandledrejection', (e) => {
 (window as unknown as { __settings: typeof useSettings }).__settings = useSettings;
 (window as unknown as { __getSession: typeof getSession }).__getSession = getSession;
 (window as unknown as { __loadSample: () => Promise<void> }).__loadSample = async () => {
-  const txt = await (await fetch('/sample/test-tx.json')).text();
+  const txt = await (await fetch(`${import.meta.env.BASE_URL}sample/test-tx.json`)).text();
   await useStore.getState().loadTransaction(txt, 'test-tx.json');
 };
 
