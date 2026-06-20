@@ -1,0 +1,21 @@
+{
+  "name": "@de-uplc/engine-wasm",
+  "version": "0.0.1",
+  "private": true,
+  "description": "wasm-pack (--target web) output for the de-uplc engine. Generated artifact — built from rust-src (pkg/ is gitignored; CI and the local prebuild guard build it via `npm run build:wasm`).",
+  "type": "module",
+  "main": "./pkg/de_uplc.js",
+  "module": "./pkg/de_uplc.js",
+  "types": "./pkg/de_uplc.d.ts",
+  "exports": {
+    ".": {
+      "types": "./pkg/de_uplc.d.ts",
+      "import": "./pkg/de_uplc.js"
+    },
+    "./de_uplc_bg.wasm": "./pkg/de_uplc_bg.wasm"
+  },
+  "files": ["pkg"],
+  "scripts": {
+    "build": "./build.sh"
+  }
+}

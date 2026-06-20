@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@de-uplc/core": ["../../packages/core/src/index.ts"],
+      "@de-uplc/engine-worker": ["../../packages/engine-worker/src/index.ts"],
+      "@de-uplc/engine-wasm": ["../../packages/engine-wasm/pkg/de_uplc.d.ts"]
+    }
+  },
+  "include": ["src"]
+}

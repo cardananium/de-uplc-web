@@ -1,0 +1,23 @@
+{
+  "name": "@de-uplc/core",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Platform-agnostic core for the de-uplc UPLC debugger (no vscode/fs/react).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src",
+    "generate-schemas": "cd ../../rust-src && cargo run --bin generate_schemas",
+    "generate-types": "node scripts/generate-types.cjs",
+    "check-types": "node scripts/check-types.cjs",
+    "generate-all": "npm run generate-schemas && cp ../../rust-src/schemas/combined_schema.json src/debugger-types/ && npm run generate-types"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^15.0.4"
+  }
+}

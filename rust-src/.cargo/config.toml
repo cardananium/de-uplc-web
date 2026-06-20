@@ -1,0 +1,19 @@
+[target.wasm32-unknown-unknown]
+rustflags = [
+    "-C", "target-cpu=mvp",
+    # "-C", "link-arg=--stack-first",
+    # "-C", "link-arg=-z stack-first",
+    # "-C", "link-args=-z stack-size=209715200",
+    # "-C", "link-args=-z initial-memory=268435456",
+    # "-C", "link-args=-z max-memory=1073741824"
+]
+
+# NOTE (M0 spike, 2026-06-02): build-std is NOT required for the web target.
+# The prebuilt std for wasm32-unknown-unknown is sufficient, so the crate builds
+# on STABLE Rust (verified: release build, blst linked, runs in Node + Chrome).
+# Removing the [unstable] build-std block lets CI run on stable (no nightly /
+# rust-src). It also makes the previous panic_abort-without-profile-panic
+# mismatch moot. Re-add only if a future need for build-std arises.
+#
+# [unstable]
+# build-std = ["std", "panic_abort"]

@@ -1,0 +1,345 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`UPLC grammar tokenization > matches the token snapshot 1`] = `
+[
+  {
+    "line": "Apply {",
+    "tokens": [
+      [
+        0,
+        "keyword.control.uplc",
+      ],
+      [
+        5,
+        "source.uplc",
+      ],
+      [
+        6,
+        "meta.structure.dictionary.uplc",
+      ],
+    ],
+  },
+  {
+    "line": "  fun: λ x {",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.uplc",
+      ],
+      [
+        2,
+        "storage.modifier.uplc",
+      ],
+      [
+        5,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        6,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        7,
+        "keyword.control.uplc",
+      ],
+      [
+        8,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        9,
+        "variable.other.uplc",
+      ],
+      [
+        10,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        11,
+        "meta.structure.dictionary.uplc",
+      ],
+    ],
+  },
+  {
+    "line": "    body: Built-in addInteger",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.uplc",
+      ],
+      [
+        4,
+        "storage.modifier.uplc",
+      ],
+      [
+        8,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        9,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        10,
+        "keyword.control.uplc",
+      ],
+      [
+        18,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        19,
+        "entity.name.function.uplc",
+      ],
+    ],
+  },
+  {
+    "line": "  },",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        2,
+        "meta.structure.dictionary.uplc",
+      ],
+      [
+        3,
+        "meta.structure.dictionary.uplc",
+      ],
+    ],
+  },
+  {
+    "line": "  arg: Apply {",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.uplc",
+      ],
+      [
+        2,
+        "storage.modifier.uplc",
+      ],
+      [
+        5,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        6,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        7,
+        "keyword.control.uplc",
+      ],
+      [
+        12,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        13,
+        "meta.structure.dictionary.uplc",
+      ],
+    ],
+  },
+  {
+    "line": "    fun: Var x,",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.uplc",
+      ],
+      [
+        4,
+        "storage.modifier.uplc",
+      ],
+      [
+        7,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        8,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        9,
+        "keyword.control.uplc",
+      ],
+      [
+        12,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        13,
+        "variable.other.uplc",
+      ],
+      [
+        14,
+        "meta.structure.dictionary.uplc",
+      ],
+    ],
+  },
+  {
+    "line": "    arg: Const Integer: "42"",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.uplc",
+      ],
+      [
+        4,
+        "storage.modifier.uplc",
+      ],
+      [
+        7,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        8,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        9,
+        "keyword.control.uplc",
+      ],
+      [
+        14,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        15,
+        "entity.name.type.uplc",
+      ],
+      [
+        22,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        25,
+        "constant.numeric.uplc",
+      ],
+      [
+        27,
+        "meta.structure.dictionary.value.uplc",
+      ],
+    ],
+  },
+  {
+    "line": "  }",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.value.uplc",
+      ],
+      [
+        2,
+        "meta.structure.dictionary.uplc",
+      ],
+    ],
+  },
+  {
+    "line": "}",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.uplc",
+      ],
+    ],
+  },
+]
+`;
+
+exports[`plutus-types JSON grammar tokenization > matches the token snapshot 1`] = `
+[
+  {
+    "line": "{",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.json",
+      ],
+    ],
+  },
+  {
+    "line": "  type: "Constr",",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.json",
+      ],
+      [
+        2,
+        "support.type.property-name.json",
+      ],
+      [
+        8,
+        "string.quoted.double.json",
+      ],
+      [
+        9,
+        "string.quoted.double.json",
+      ],
+      [
+        15,
+        "string.quoted.double.json",
+      ],
+      [
+        16,
+        "meta.structure.dictionary.json",
+      ],
+    ],
+  },
+  {
+    "line": "  tag: 0,",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.json",
+      ],
+      [
+        2,
+        "support.type.property-name.json",
+      ],
+      [
+        7,
+        "constant.numeric.json",
+      ],
+      [
+        8,
+        "meta.structure.dictionary.json",
+      ],
+    ],
+  },
+  {
+    "line": "  fields: []",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.json",
+      ],
+      [
+        2,
+        "support.type.property-name.json",
+      ],
+      [
+        10,
+        "meta.structure.array.json",
+      ],
+      [
+        11,
+        "meta.structure.array.json",
+      ],
+    ],
+  },
+  {
+    "line": "}",
+    "tokens": [
+      [
+        0,
+        "meta.structure.dictionary.json",
+      ],
+    ],
+  },
+]
+`;

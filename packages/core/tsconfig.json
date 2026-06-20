@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    // Core is platform-agnostic: no DOM, no Node. Only ES + WebWorker-safe globals.
+    // (We deliberately omit "DOM" so an accidental document/window usage fails to compile.
+    //  AbortSignal/fetch/URL/TextEncoder live in the WebWorker lib + ES2022.)
+    "lib": ["ES2022", "WebWorker"],
+    "types": []
+  },
+  "include": ["src", "test"]
+}

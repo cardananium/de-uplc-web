@@ -1,0 +1,426 @@
+/* Design tokens + app chrome. A two-surface dark/light system with a left activity
+   rail, a top titlebar, soft gradient cards, status badges and budget meters — the
+   goal is a "developer tool" feel (VS Code / Linear / JetBrains) rather than raw
+   HTML controls. Legacy var names (--bg-elev, --bg-subtle) are kept as aliases so
+   existing rules keep working. */
+:root {
+  /* text */
+  --fg: #1f2328;
+  --fg-muted: #59636e;
+  --fg-dim: #6b747e; /* AA (4.75:1 on #fff / 4.19:1 on --bg-subtle) for the 10.5px budget headers + status-meta */
+  /* surfaces */
+  --bg: #eceff3;          /* page */
+  --surface: #ffffff;
+  --surface-2: #ffffff;
+  --surface-3: #f0f3f7;
+  --bg-elev: #ffffff;     /* legacy alias: solid card/popover surface */
+  --bg-subtle: #eef1f5;   /* insets, hover, code wells */
+  --border: rgba(16, 22, 30, 0.10);
+  --border-strong: rgba(16, 22, 30, 0.17);
+  --disabled-fg: #8c959f;
+  --error-fg: #d83a42;
+  /* Overspend-meter gradient: the left stop is darkened in light so it clears the WCAG 1.4.11 3:1
+     graphical floor on the white panel (the old #ff9b6a was ~2:1 — nearly invisible). */
+  --meter-danger-from: #ef5f33;
+  --shadow: 0 1px 2px rgba(27, 31, 36, 0.05), 0 8px 24px rgba(27, 31, 36, 0.07);
+  --shadow-lg: 0 16px 40px rgba(27, 31, 36, 0.18);
+
+  /* accents */
+  --accent: #4f6bed;
+  --accent-green: #1f9d57;
+  --warning: #b7791f;
+  /* status-badge foregrounds: light needs a darker fg than the raw accent to clear WCAG AA on the
+     15-16% tint over #eceff3 (dark reuses the accents, already AA). */
+  --badge-running-fg: #2f47c2;
+  --badge-paused-fg: #6b4500;
+  --badge-done-fg: #0a6b37;
+  --badge-error-fg: #a81f27;
+
+  /* debug transport accents */
+  --dbg-start: #1f9d57;
+  --dbg-pause: #b7791f;
+  --dbg-continue: #1f9d57;
+  --dbg-stop: #d83a42;
+  --dbg-restart: #6e7781;
+  --dbg-step: #4f6bed;
+
+  /* node-tree icon tints, by LazyRef kind */
+  --node-state: #9a6700;
+  --node-context: #8250df;
+  --node-env: #1a7f37;
+  --node-value: #0969da;
+  --node-constant: #1b7c83;
+  --node-runtime: #bc4c00;
+  --node-term: #6e7781;
+
+  --radius-sm: 3px;
+  --radius: 5px;
+  --radius-lg: 7px;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* UI chrome (titles, labels, buttons) is sans; only code/tree/editor stay monospace. */
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: light;
+}
+
+/* Dark theme — applied via <html data-theme="dark"> (App resolves light/dark/system). */
+:root[data-theme='dark'] {
+  --fg: #e6edf3;
+  --fg-muted: #9aa7b5;
+  --fg-dim: #6f7d8c;
+  --bg: #090d12;
+  --surface: #121a24;
+  --surface-2: #18212e;
+  --surface-3: #1f2937;
+  --bg-elev: #18212e;
+  --bg-subtle: #1f2937;
+  --border: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --disabled-fg: #5b6673;
+  --error-fg: #ff6b71;
+  --meter-danger-from: #ff9b6a; /* keep the brighter peach on dark (already ~7.8:1) */
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 30px rgba(0, 0, 0, 0.34);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
+
+  --accent: #7c9cff;
+  --accent-green: #55d187;
+  --warning: #f5c46b;
+  --badge-running-fg: var(--accent);
+  --badge-paused-fg: var(--warning);
+  --badge-done-fg: var(--accent-green);
+  --badge-error-fg: var(--error-fg);
+
+  --dbg-start: #55d187;
+  --dbg-pause: #f5c46b;
+  --dbg-continue: #55d187;
+  --dbg-stop: #ff6b71;
+  --dbg-restart: #9aa7b5;
+  --dbg-step: #7c9cff;
+
+  --node-state: #f5c46b;
+  --node-context: #c792ea;
+  --node-env: #55d187;
+  --node-value: #82aaff;
+  --node-constant: #56d4dd;
+  --node-runtime: #ff9b6a;
+  --node-term: #9aa7b5;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0; color: var(--fg); background: var(--bg);
+  font-family: var(--font-ui); font-size: 13px; line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Thin, unobtrusive scrollbars (track transparent, thumb = border, brightens on hover). */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-dim); background-clip: padding-box; }
+
+/* Visible keyboard focus on every interactive control (the UA default is inconsistent / invisible
+   on dark surfaces). Inputs/selects keep their own focus glow (above), so they opt out. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
+
+/* ── App chrome: an L-shaped frame — brand corner + titlebar on top, activity rail
+   on the left, content (sidebar + editor) filling the rest. ── */
+.app-shell {
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  grid-template-rows: 52px 1fr;
+  grid-template-areas: "brand titlebar" "rail content";
+  height: 100vh;
+  background: var(--bg);
+}
+
+/* brand corner (top-left, sits above the rail) */
+.app-brand {
+  grid-area: brand;
+  display: flex; align-items: center; justify-content: center;
+  border-bottom: 1px solid var(--border);
+}
+.app-brand-logo {
+  width: 32px; height: 32px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 17px;
+  background: #6f6bf5;
+  box-shadow: 0 2px 8px rgba(91, 107, 255, 0.38);
+}
+
+/* top titlebar */
+.app-titlebar {
+  grid-area: titlebar;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  /* At narrow widths let the action cluster scroll into view instead of clipping against the grid
+     cell (matches the tab-bar's overflow-x treatment). */
+  min-width: 0; overflow-x: auto; scrollbar-width: thin;
+}
+.app-title { font-size: 15px; font-weight: 700; margin: 0; letter-spacing: -0.01em; white-space: nowrap; }
+
+/* left activity rail */
+.app-rail {
+  grid-area: rail;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 0;
+  border-right: 1px solid var(--border);
+}
+.rail-spacer { flex: 1; }
+
+/* round chrome icon buttons (rail + titlebar theme/settings) */
+.chrome-button {
+  width: 38px; height: 38px; border-radius: 7px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: none; color: var(--fg-muted);
+  cursor: pointer; font-size: 16px; transition: background 0.12s, color 0.12s;
+}
+.chrome-button:hover { background: var(--bg-subtle); color: var(--fg); }
+.chrome-button.is-active { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* content area (sidebar + editor) */
+/* overflow:hidden so a stray wide child (long hash, log line) can never add a horizontal scrollbar
+   or shift the layout; long content wraps at source, the editor/sidebar scroll internally. */
+.app-content { grid-area: content; min-height: 0; min-width: 0; display: flex; flex-direction: column; padding: 12px; overflow: hidden; }
+.app-body { display: flex; gap: 12px; flex: 1 1 auto; min-height: 0; min-width: 0; }
+.app-sidebar { flex: 0 0 372px; overflow: hidden auto; min-height: 0; padding-right: 6px; }
+.app-sidebar > .panel { min-width: 0; }
+.app-sidebar > .panel:first-child { margin-top: 0; }
+.app-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+/* The editor panel fills the right column; its inner content area flexes (see term-editor.css). */
+.app-main > .panel { flex: 1 1 auto; margin: 0; min-height: 0; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.app-main .tabbar { margin: 0; }
+.app-main .term-editor-wrap { border: none; border-radius: 0; }
+
+/* Persistent error banner (the failure reason) above the body. */
+.app-error { display: flex; align-items: flex-start; gap: 8px; flex: 0 0 auto; margin-bottom: 10px; padding: 9px 10px; border-radius: var(--radius); border: 1px solid var(--border); border-left: 3px solid var(--error-fg); background: color-mix(in srgb, var(--error-fg) 9%, var(--surface-2)); color: var(--fg); }
+.app-error > .codicon { color: var(--error-fg); margin-top: 1px; flex: 0 0 auto; }
+.app-error .app-error-msg { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 12px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow-y: auto; }
+.app-error .icon-button { color: var(--error-fg); margin: -2px -2px 0 0; flex: 0 0 auto; }
+/* Script-failure tone: a neutral debugging RESULT, warning-coloured rather than crash-red (a crash
+   or load failure keeps the red alarm). Same source-order specificity, so these override the base. */
+.app-error--script { border-left-color: var(--warning); background: color-mix(in srgb, var(--warning) 9%, var(--surface-2)); }
+.app-error--script > .codicon, .app-error--script .icon-button { color: var(--warning); }
+
+/* ── cards ── */
+.panel {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  margin: 12px 0;
+  box-shadow: var(--shadow);
+}
+.panel > .panel-title { font-weight: 700; font-size: 11px; letter-spacing: 0.07em; color: var(--fg-muted); text-transform: uppercase; }
+.muted { color: var(--fg-muted); }
+
+/* Panel inner sections + edge-to-edge dividers. */
+.panel-divider { border-top: 1px solid var(--border); margin: 12px -16px; }
+.mc-section { margin-top: 12px; }
+.panel-divider + .mc-section { margin-top: 0; }
+.mc-section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--fg-muted); margin-bottom: 8px; }
+.mc-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* Debug transport toolbar (pill group) + status badge in the titlebar. */
+.transport-bar { display: flex; align-items: center; gap: 10px; }
+/* key/value rows (script hash, language) — label column auto-sizes, value wraps. */
+.mc-kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: baseline; margin: 12px 0 0; font-size: 12.5px; }
+.mc-kv dt { color: var(--fg-muted); }
+.mc-kv dd { margin: 0; min-width: 0; }
+.mono { font-family: var(--font-mono); }
+.break { overflow-wrap: anywhere; word-break: break-all; }
+
+/* ── status badge (titlebar) ── */
+.status-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px 5px 8px; border-radius: var(--radius);
+  font-size: 12.5px; font-weight: 600; white-space: nowrap;
+}
+.status-badge .codicon { font-size: 13px; }
+.status-badge.tone-idle    { background: var(--bg-subtle); color: var(--fg-muted); }
+.status-badge.tone-running { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--badge-running-fg); }
+.status-badge.tone-paused  { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--badge-paused-fg); }
+.status-badge.tone-done    { background: color-mix(in srgb, var(--accent-green) 16%, transparent); color: var(--badge-done-fg); }
+.status-badge.tone-error   { background: color-mix(in srgb, var(--error-fg) 16%, transparent); color: var(--badge-error-fg); }
+.status-meta { color: var(--fg-dim); font-size: 11.5px; white-space: nowrap; }
+
+/* ── transport pill (icon group) ── */
+.icon-box { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }
+.icon-button {
+  background: transparent; border: none; padding: 7px 9px; cursor: pointer; display: inline-flex;
+  color: var(--fg); transition: background 0.12s ease;
+}
+.icon-button + .icon-button { border-left: 1px solid var(--border); }
+.icon-button:hover:not(:disabled) { background: var(--bg-subtle); }
+.icon-button:disabled { cursor: default; opacity: 0.5; }
+/* A disabled button reads as plain grey (no accent) so it's clear it isn't
+   clickable. The accent colours apply ONLY to enabled buttons — :not(:disabled)
+   also keeps them from out-specifying the disabled-grey rule below. */
+.icon-button:disabled .codicon { color: var(--disabled-fg); }
+
+.icon-button:not(:disabled).accent-start .codicon { color: var(--dbg-start); }
+.icon-button:not(:disabled).accent-pause .codicon { color: var(--dbg-pause); }
+.icon-button:not(:disabled).accent-continue .codicon { color: var(--dbg-continue); }
+.icon-button:not(:disabled).accent-stop .codicon { color: var(--dbg-stop); }
+.icon-button:not(:disabled).accent-restart .codicon { color: var(--dbg-restart); }
+.icon-button:not(:disabled).accent-step .codicon { color: var(--dbg-step); }
+
+.text-button {
+  display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; flex-shrink: 0; padding: 6px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); color: var(--fg); cursor: pointer;
+  font-weight: 500; transition: background 0.12s ease, border-color 0.12s ease;
+}
+.text-button:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--border-strong); }
+.text-button:active:not(:disabled) { background: var(--bg-subtle); }
+.text-button:disabled { color: var(--disabled-fg); cursor: default; }
+
+select:disabled { color: var(--disabled-fg); }
+
+/* ── budget meters ── */
+.budget { margin-top: 10px; }
+/* Fixed label column + container-sized (minmax(0,1fr)) number columns. Each metric is its own
+   grid, so the columns MUST be width-by-container (not `auto`/content) to line up across the
+   header + Ex-units + Memory rows — otherwise each row sizes independently and "everything drifts".
+   Full grouped numbers in a small mono so the long ExUnits values fit without abbreviating. */
+.budget-cols { display: grid; grid-template-columns: 52px repeat(2, minmax(0, 1fr)); gap: 4px 10px; align-items: baseline; font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.budget-cols > span:not(:first-child) { text-align: right; }
+.budget-cols > .bt-label { font-family: var(--font-ui); font-size: 12px; color: var(--fg); }
+.budget-head { margin-bottom: 4px; font-family: var(--font-ui); color: var(--fg-dim); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.budget-metric { margin-top: 10px; }
+.budget-metric:first-of-type { margin-top: 6px; }
+.budget-meter-row { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
+/* Inset hairline so the (empty) track is visible against the white panel — without it the track is
+   ~1.26:1 on #fff and a partial meter reads as a floating stub with no "out of total" affordance. */
+.meter { flex: 1; height: 6px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg-dim) 30%, transparent); box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; }
+.meter-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-green), var(--accent)); transition: width 0.35s ease; }
+.meter-fill.danger { background: linear-gradient(90deg, var(--meter-danger-from), var(--error-fg)); }
+.meter-pct { width: 48px; text-align: right; color: var(--fg-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+/* On overspend, alarm ONLY the label + the value that overran (Spent) — keep the Limit (which was
+   NOT exceeded) and the percentage in their normal tokens so the eye lands on the problem number. */
+.budget-overspend .bt-label, .budget-overspend .bt-spent { color: var(--error-fg); }
+
+/* file-drop: the Transaction panel is itself the drop target (no separate box). */
+.panel-drop { border-color: var(--accent); background: var(--bg-subtle); }
+
+/* tree (UPLC data — monospace) */
+.tree { font-size: 12.5px; font-family: var(--font-mono); }
+.tree-row { display: flex; align-items: center; gap: 4px; padding: 2px 4px; cursor: default; white-space: nowrap; border-radius: 5px; }
+.tree-row:hover { background: var(--bg-subtle); }
+.tree-twisty { display: inline-flex; width: 16px; justify-content: center; color: var(--fg-muted); }
+.tree-label { overflow: hidden; text-overflow: ellipsis; }
+.tree-open-tab { margin-left: auto; padding: 0 4px; background: none; border: none; color: var(--fg-muted); cursor: pointer; display: inline-flex; opacity: 0; transition: opacity 0.1s ease; }
+/* Reveal on row-hover OR keyboard focus (so the action is reachable without a mouse). */
+.tree-row:hover .tree-open-tab, .tree-open-tab:focus-visible { opacity: 1; }
+.tree-open-tab:hover, .tree-open-tab:focus-visible { color: var(--accent); }
+.tree-match { color: var(--accent); font-weight: 600; }
+/* Rows that opt into wrapping (long full-value nodes, truncation warnings): relax the default
+   single nowrap line so the text wraps instead of extending past the viewport / freezing layout. */
+.tree-row-wrap { white-space: normal; align-items: flex-start; }
+.tree-row-wrap .tree-label { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+
+/* lazy node-explorer tab: search bar on top, on-demand tree filling below */
+.node-explorer { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.node-explorer-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--fg-muted); }
+.node-search { flex: 1; padding: 3px 8px; font-size: 12.5px; }
+.node-explorer-tree { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px 4px; }
+/* In the lazy-explorer TAB (unlike the narrow sidebar) show values in full: don't ellipsis-clip
+   the label — let long rows extend and the tree scroll horizontally. */
+.node-explorer .tree-label { overflow: visible; text-overflow: clip; }
+.node-depth { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg-muted); white-space: nowrap; }
+.node-depth input { width: 62px; padding: 3px 6px; font-size: 12.5px; appearance: textfield; -moz-appearance: textfield; }
+.node-depth input::-webkit-outer-spin-button, .node-depth input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* form controls (inherit theme tokens; native widgets follow color-scheme) */
+input, select {
+  background: var(--bg-subtle); color: var(--fg); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 6px 10px; font: inherit; font-size: 13px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+input:focus, select:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+code { background: var(--bg-subtle); padding: 1px 5px; border-radius: 4px; font-family: var(--font-mono); }
+
+/* modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; max-width: 380px; box-shadow: var(--shadow-lg); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* share dialog */
+.share-url {
+  width: 100%; resize: none; box-sizing: border-box; padding: 8px 10px;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5; color: var(--fg);
+  background: var(--bg-subtle); border: 1px solid var(--border); border-radius: var(--radius);
+  word-break: break-all;
+}
+.share-url:focus { outline: none; border-color: var(--accent); }
+.share-meta { margin-top: 6px; font-size: 11.5px; color: var(--fg-muted); }
+.share-copy { min-width: 108px; justify-content: center; }
+
+/* settings modal grid */
+.settings-grid { display: grid; grid-template-columns: 130px 1fr; gap: 10px 12px; align-items: start; }
+.settings-grid > label { color: var(--fg-muted); font-size: 13px; padding-top: 7px; }
+.settings-grid input, .settings-grid select { width: 100%; }
+.settings-grid input[type='checkbox'] { width: auto; }
+.settings-section { grid-column: 1 / -1; font-weight: 700; font-size: 12px; color: var(--fg-muted); border-top: 1px solid var(--border); padding-top: 10px; margin-top: 2px; }
+
+.panel-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* ── segmented control (micro-tabs inside a panel, e.g. Transaction / UPLC script) ── */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }
+.seg-item {
+  background: transparent; border: none; padding: 4px 11px; cursor: pointer; color: var(--fg-muted);
+  font: inherit; font-size: 11.5px; font-weight: 600; transition: background 0.12s ease, color 0.12s ease;
+}
+.seg-item + .seg-item { border-left: 1px solid var(--border); }
+.seg-item:hover:not(.is-active):not(:disabled) { background: var(--bg-subtle); color: var(--fg); }
+.seg-item.is-active { background: var(--bg-subtle); color: var(--fg); }
+.seg-item:disabled { cursor: default; opacity: 0.5; }
+
+/* ── Decompiler view (left-rail "Decompiler" tab) ── */
+.dc-link { background: none; border: none; color: var(--fg-muted); cursor: pointer; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; border-radius: var(--radius-sm); }
+.dc-link:hover { color: var(--accent); }
+.dc-input { resize: vertical; min-height: 84px; }
+.dc-run { width: 100%; justify-content: center; border-color: var(--border-strong); }
+.dc-run:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+/* options: label↔control rows + checkbox rows */
+.dc-fields { display: flex; flex-direction: column; gap: 8px; }
+.dc-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--fg-muted); }
+.dc-field > span { white-space: nowrap; }
+.dc-field select { flex: 0 1 150px; min-width: 0; padding: 4px 8px; font-size: 12.5px; }
+.dc-checks { display: flex; flex-direction: column; gap: 9px; }
+.dc-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--fg); cursor: pointer; }
+.dc-check input { width: auto; flex: 0 0 auto; }
+.dc-check span { min-width: 0; }
+/* collapsible pass-cluster + validator-shape groups */
+.dc-group { margin-top: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-3); }
+.dc-group > summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; }
+.dc-group > summary::-webkit-details-marker { display: none; }
+.dc-group > summary::before { content: '▸'; color: var(--fg-muted); font-size: 10px; transition: transform 0.12s ease; }
+.dc-group[open] > summary::before { transform: rotate(90deg); }
+.dc-group-head { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.dc-group-title { font-weight: 600; font-size: 12.5px; }
+.dc-group-desc { font-size: 11px; }
+.dc-group-body { display: flex; flex-direction: column; gap: 9px; padding: 9px 12px 12px; border-top: 1px solid var(--border); }
+.dc-output-panel .tabbar .tab { cursor: default; }
+
+/* Narrow viewport: stack the sidebar above the editor so neither pane is clipped. The desktop
+   layout has a fixed 372px sidebar that would otherwise squish the editor to an unusable sliver
+   (and .app-content is overflow:hidden, so nothing would scroll). */
+@media (max-width: 900px) {
+  .app-body { flex-direction: column; }
+  .app-sidebar { flex: 0 0 auto; max-height: 46vh; overflow: auto; padding-right: 0; }
+  .app-main { flex: 1 1 auto; min-height: 320px; }
+}
+
+/* Respect reduced-motion: kill transitions/animations (badge spin, meter, flash, transport, scroll). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important; scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    // Browser-targeted (main thread spawns the worker; worker.ts runs in a worker).
+    // DOM lib provides Worker/URL/TextEncoder/fetch/self; WebWorker types are pulled per-file
+    // via the /// <reference lib="webworker" /> in worker.ts.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "@de-uplc/core": ["../core/src/index.ts"],
+      "@de-uplc/engine-wasm": ["../engine-wasm/pkg/de_uplc.d.ts"]
+    }
+  },
+  "include": ["src"]
+}

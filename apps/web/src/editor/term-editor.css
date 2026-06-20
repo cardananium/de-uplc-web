@@ -1,0 +1,195 @@
+/* Monaco term editor: container + breakpoint glyphs + debugger/finished/error
+   line highlights with trailing injected text. Light theme for now; the dark
+   variant + the per-theme glyph swap (plan §5.4.2) arrives with the M7 theming
+   pass — the glyphs are CSS-driven (background-image data-URIs) precisely so
+   that swap is a class/variable change, not a code change. */
+
+/* The editor fills the right column: the panel is a flex column (tokens.css), the
+   tab-content area flexes, and the wrap + Monaco host stretch to fill it. Monaco is
+   created with automaticLayout, so it reflows to the host's resized height. */
+.tab-content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* term tab = editor pane + bottom status bar */
+.term-pane { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.term-editor-wrap {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 240px;
+}
+
+/* bottom status bar (Ln/Col + encoding + the breakpoint hint) */
+.editor-statusbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 5px 12px; border-top: 1px solid var(--border);
+  font-size: 11.5px; color: var(--fg-muted);
+}
+.editor-statusbar .sb-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.editor-statusbar .sb-spacer { flex: 1; }
+.editor-statusbar .sb-item { white-space: nowrap; }
+.editor-statusbar .sb-item-btn { background: none; border: none; padding: 0; font: inherit; cursor: pointer; }
+.editor-statusbar .sb-item-btn:hover { text-decoration: underline; }
+.editor-statusbar .sb-paused { color: var(--accent); }
+.editor-statusbar .sb-done { color: var(--accent-green); }
+.editor-statusbar .sb-error { color: var(--error-fg); }
+.term-editor {
+  width: 100%;
+  height: 100%;
+}
+.term-editor-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-muted);
+  background: var(--bg-elev);
+  pointer-events: none;
+}
+
+/* Tab bar (header strip above the editor). Tabs scroll horizontally when they overflow; the
+   actions (Find) stay pinned to the right. */
+.tabbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 8px 7px 10px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.tab:hover {
+  background: var(--bg-subtle);
+}
+.tab.active {
+  color: var(--fg);
+  background: var(--bg-subtle);
+}
+.tab .tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+.tab .tab-close {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  display: inline-flex;
+  padding: 0 0 0 2px;
+}
+.tab .tab-close:hover {
+  color: var(--error-fg);
+}
+
+/* right-aligned tab-bar actions (find, …) — pinned while the tabs scroll under them */
+.tabbar-actions { margin-left: auto; position: sticky; right: 0; flex: 0 0 auto; display: flex; align-items: center; gap: 2px; background: var(--bg-elev); padding-left: 4px; }
+.tabbar-action {
+  width: 30px; height: 30px; border-radius: var(--radius);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: none; color: var(--fg-muted); cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.tabbar-action:hover { background: var(--bg-subtle); color: var(--fg); }
+
+/* Breakpoint gutter glyphs (16x16 SVG data-URIs, centered in the glyph margin). */
+.glyph-bp-possible,
+.glyph-bp-active,
+.glyph-bp-disabled {
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 13px 13px;
+  cursor: pointer;
+}
+/* Subtle at rest (it's on EVERY term line) so it hints "clickable" without flooding the gutter;
+   it brightens on gutter hover. */
+.glyph-bp-possible {
+  opacity: 0.3;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='none' stroke='%23888' stroke-width='2'/%3E%3C/svg%3E");
+}
+.monaco-editor .margin:hover .glyph-bp-possible { opacity: 0.7; }
+/* Per-theme glyph swap is a CSS-only change (plan §5.4.2): brighter possible-ring on dark. */
+:root[data-theme='dark'] .glyph-bp-possible {
+  opacity: 0.4;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='none' stroke='%23adbac7' stroke-width='2'/%3E%3C/svg%3E");
+}
+.glyph-bp-active {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='%23d1403f'/%3E%3C/svg%3E");
+}
+.glyph-bp-disabled {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='%23999'/%3E%3C/svg%3E");
+}
+
+/* Whole-line debugger/finished/error highlights. The state colour rides the
+   background; the trailing comment is an inlay hint (Monaco decoration injected
+   `after` text does not render in this build, but inlay injected text does). */
+/* Token-derived per theme; the PAUSED band is the one you stare at, so it gets a left accent rail
+   for unmistakable current-step location even on long lines. */
+.dbg-line {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
+/* Terminal lines (where execution ended) get the same left accent rail as the paused band plus a
+   stronger fill, so "finished/error here" reads at a glance even on long, deeply-indented lines. */
+.dbg-finished-line {
+  background: color-mix(in srgb, var(--accent-green) 30%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--accent-green);
+}
+.dbg-error-line {
+  background: color-mix(in srgb, var(--error-fg) 30%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--error-fg);
+}
+/* Gutter glyphs marking the terminal line — theme-coloured ✓ / ✗ via CSS mask. */
+.dbg-finished-glyph,
+.dbg-error-glyph {
+  -webkit-mask: center / 13px no-repeat;
+  mask: center / 13px no-repeat;
+}
+.dbg-finished-glyph {
+  background: var(--accent-green);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5 6.5 11 12.5 4.5' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5 6.5 11 12.5 4.5' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.dbg-error-glyph {
+  background: var(--error-fg);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 4.5 11.5 11.5 M11.5 4.5 4.5 11.5' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 4.5 11.5 11.5 M11.5 4.5 4.5 11.5' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+/* Transient flash when a term is revealed from an inspector tree row ("reveal in editor").
+   The decoration is cleared after ~1.4s; the animation fades the accent tint over that time. */
+.term-locate-line {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  animation: term-locate-flash 1.4s ease-out;
+}
+@keyframes term-locate-flash {
+  0% { background: color-mix(in srgb, var(--accent) 60%, transparent); }
+  100% { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+}

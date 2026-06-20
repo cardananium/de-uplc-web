@@ -1,0 +1,5 @@
+# M0 spike (2026-06-02) proved the web target builds on STABLE Rust:
+# build-std is not needed (see .cargo/config.toml), so no nightly / rust-src.
+[toolchain]
+channel = "stable"
+targets = ["wasm32-unknown-unknown"]

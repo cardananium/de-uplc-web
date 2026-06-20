@@ -1,0 +1,22 @@
+{
+  "name": "@de-uplc/engine-worker",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Browser module Web Worker hosting the de-uplc WASM engine, + the host-side run-until-breakpoint runner (IDebuggerEngine).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "comment": "Cross-package links use Vite aliases (see apps/web/vite.config.ts), not real workspace symlinks — so @de-uplc/* are plain \"*\" specifiers (npm rejects pnpm-style \"workspace:*\").",
+  "dependencies": {
+    "comlink": "^4.4.2",
+    "@de-uplc/core": "*",
+    "@de-uplc/engine-wasm": "*"
+  }
+}
