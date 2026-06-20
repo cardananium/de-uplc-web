@@ -80,7 +80,7 @@ interface AppState {
   termText?: string;
   termLocations: TermLocation[];
   termHints: TermHintInfo[];
-  // term rendering style: 'tree' (debug tree) or 'uplc' (canonical uplc-crate syntax)
+  // term rendering style: 'tree' (debug tree) or 'uplc' (canonical UPLC syntax)
   termView: TermView;
 
   // inlay hints UI state (global on/off toggle)

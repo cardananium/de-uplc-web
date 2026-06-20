@@ -88,9 +88,9 @@ class UplcPretty {
 }
 
 // ── Builtins ───────────────────────────────────────────────────────────────────────
-// `term.fun` is the Rust enum variant name (Debug, e.g. `UnListData`); the uplc crate's
-// `Display` emits the canonical camelCase name. Most are just the variant with a
-// lower-cased first letter; these are the ones that differ (uplc crate `builtins.rs`).
+// `term.fun` is the Rust enum variant name (Debug, e.g. `UnListData`); canonical UPLC uses the
+// camelCase builtin name. Most are just the variant with a lower-cased first letter; these are
+// the ones that differ.
 
 const BUILTIN_OVERRIDES: Record<string, string> = {
   VerifyEd25519Signature: 'verifySignature',

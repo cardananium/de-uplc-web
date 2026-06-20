@@ -7,7 +7,7 @@ import type { Network, SettingsStore, NetworkPrompt } from '@de-uplc/core';
 //    runs always see the latest values (matches the extension's getConfiguration).
 
 export type ThemePref = 'light' | 'dark' | 'system';
-/** Term editor rendering: the debug tree, or canonical UPLC (uplc-crate style). */
+/** Term editor rendering: the debug tree, or canonical UPLC syntax. */
 export type TermView = 'tree' | 'uplc';
 
 export interface Settings {

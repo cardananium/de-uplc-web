@@ -55,10 +55,16 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
           </select>
 
           <label htmlFor="set-termview">Term rendering</label>
-          <select id="set-termview" value={termView} onChange={(e) => setTermView(e.target.value as TermView)}>
-            <option value="tree">Debug tree</option>
-            <option value="uplc">UPLC (uplc-crate syntax)</option>
-          </select>
+          <div>
+            <select id="set-termview" value={termView} onChange={(e) => setTermView(e.target.value as TermView)}>
+              <option value="tree">Debug tree</option>
+              <option value="uplc">UPLC syntax</option>
+            </select>
+            <div className="setting-hint">
+              <div><strong>Debug tree</strong> — readable nested view, e.g.<br /><code>Apply &#123; fun: λ x …, arg: con integer 42 &#125;</code></div>
+              <div style={{ marginTop: 4 }}><strong>UPLC syntax</strong> — canonical on-chain form, e.g.<br /><code>[ (lam x (con integer 42)) (con integer 1) ]</code></div>
+            </div>
+          </div>
 
           <label htmlFor="set-inlay">Inlay hints</label>
           <div>
