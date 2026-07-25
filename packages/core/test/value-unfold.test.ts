@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { valuePreview, fullValueNode, PlutusDataNode, PREVIEW_LEN } from '../src/uplc-tree/nodes';
+import { valuePreview, stringPreview, stringNeedsFull, fullValueNode, PlutusDataNode, PREVIEW_LEN } from '../src/uplc-tree/nodes';
 import { LazyRef } from '../src/uplc-tree/lazy-ref';
 
 // Long scalar values (bytes / big ints / strings) are shown as a short PREVIEW; the node becomes
@@ -27,6 +27,34 @@ describe('valuePreview / fullValueNode', () => {
     const label = fullValueNode(v).toViewModel().label;
     expect(label.indexOf('…')).toBe(16 * 1024 * 1024); // the value is cut exactly at 16 MB
     expect(label).toContain('over the 16 MB display limit');
+  });
+});
+
+describe('stringPreview — multiline String constants', () => {
+  it('plain short string → leaf with quoted value', () => {
+    expect(stringPreview('S: ', 'hello')).toEqual({ label: 'S: "hello"', collapsible: false });
+    expect(stringNeedsFull('hello')).toBe(false);
+  });
+  it('short string WITH a line break → escaped one-line preview + collapsible', () => {
+    const { label, collapsible } = stringPreview('S: ', 'line1\nline2');
+    expect(collapsible).toBe(true);
+    expect(label).toBe('S: "line1\\nline2" (has line breaks — expand for full)');
+    expect(stringNeedsFull('line1\nline2')).toBe(true);
+  });
+  it('long string → truncated escaped preview + size hint (as before)', () => {
+    const long = 'a'.repeat(PREVIEW_LEN + 500);
+    const { label, collapsible } = stringPreview('S: ', long);
+    expect(collapsible).toBe(true);
+    expect(label).toContain(`${(PREVIEW_LEN + 500).toLocaleString('en-US')} chars`);
+  });
+  it('multiline String constant via LazyRef → full-value child keeps the REAL line breaks', () => {
+    const node = new LazyRef('constant', { type: 'String', value: 'line1\nline2' } as never, 'Constant');
+    const view = node.toViewModel();
+    expect(view.collapsible).toBe(true); // short but multiline → still expandable
+    const kids = node.getChildren() as { toViewModel(): { label: string; wrap?: boolean } }[];
+    expect(kids).toHaveLength(1);
+    expect(kids[0].toViewModel().label).toBe('"line1\nline2"'); // raw newline, not \\n
+    expect(kids[0].toViewModel().wrap).toBe(true); // rendered pre-wrap so the break is visible
   });
 });
 

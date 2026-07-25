@@ -5,9 +5,10 @@ import type { Term } from '../src/debugger-types';
 // Branch coverage for the tree serializer: the original serialize.test.ts only
 // exercised Apply→{Builtin,Constant}. These lock the byte-exact output of the
 // remaining term branches (Lambda/Case/Delay/Force/Constr/Var/Error) and the
-// multi-line nested-constant re-indent path, so the helper extraction in
-// serialize.ts is provably behaviour-neutral. Snapshots captured from the
-// pre-refactor serializer.
+// multi-line nested-constant re-indent path. The text snapshot is unchanged
+// from the pre-refactor serializer; the locations snapshot reflects the fixed
+// Constr header count (3 lines, not 2 — terms inside/after a Constr used to
+// report lines one above where they render).
 
 // Lambda → Case → Apply → {Delay→Force→Var, Constr→[Builtin, Error]} ; branches [Var, Error]
 const branchy: Term = {
@@ -76,17 +77,17 @@ describe('serializeTerm — branch coverage (byte-exact lock)', () => {
     expect(serializeTerm(branchy).locations).toMatchInlineSnapshot(`
       [
         {
-          "endLine": 21,
+          "endLine": 22,
           "startLine": 0,
           "termId": 1,
         },
         {
-          "endLine": 20,
+          "endLine": 21,
           "startLine": 1,
           "termId": 2,
         },
         {
-          "endLine": 15,
+          "endLine": 16,
           "startLine": 2,
           "termId": 3,
         },
@@ -106,32 +107,63 @@ describe('serializeTerm — branch coverage (byte-exact lock)', () => {
           "termId": 6,
         },
         {
-          "endLine": 14,
+          "endLine": 15,
           "startLine": 8,
           "termId": 7,
         },
         {
-          "endLine": 11,
-          "startLine": 10,
+          "endLine": 12,
+          "startLine": 11,
           "termId": 8,
         },
         {
-          "endLine": 12,
-          "startLine": 11,
+          "endLine": 13,
+          "startLine": 12,
           "termId": 9,
-        },
-        {
-          "endLine": 17,
-          "startLine": 16,
-          "termId": 10,
         },
         {
           "endLine": 18,
           "startLine": 17,
+          "termId": 10,
+        },
+        {
+          "endLine": 19,
+          "startLine": 18,
           "termId": 11,
         },
       ]
     `);
+  });
+
+  // String constants with hostile content: a raw newline must not add physical
+  // lines the line counters don't see, and a " {" inside the value must not pull
+  // the id: hint into the middle of the string.
+  it('String constant with newline stays one physical line (locations stay aligned)', () => {
+    const term: Term = {
+      term_type: 'Apply', id: 3,
+      function: { term_type: 'Constant', id: 1, constant: { type: 'String', value: 'line1\nline2' } },
+      argument: { term_type: 'Var', id: 2, name: 'x' },
+    };
+    const out = serializeTerm(term);
+    expect(out.text.split('\n')).toEqual([
+      'Apply {',
+      '  fun: Const String: "line1\\nline2",',
+      '  arg: Var x',
+      '}',
+    ]);
+    // The Var after the constant maps to the line it actually renders on.
+    expect(out.locations).toContainEqual({ startLine: 2, endLine: 3, termId: 2 });
+  });
+
+  it('id: hint sits right after the term type — never inside/after the value', () => {
+    const term: Term = {
+      term_type: 'Constant', id: 1,
+      constant: { type: 'String', value: 'foo { bar' },
+    };
+    const out = serializeTerm(term);
+    expect(out.text).toBe('Const String: "foo { bar"');
+    // After "Const" (5 chars), regardless of what the value contains.
+    expect(out.hints).toContainEqual({ line: 0, character: 5, text: ' id:1', kind: 'name' });
   });
 
   it('nested multi-line ProtoList constant text', () => {

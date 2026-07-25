@@ -317,9 +317,10 @@ select:disabled { color: var(--disabled-fg); }
 .tree-open-tab:hover, .tree-open-tab:focus-visible { color: var(--accent); }
 .tree-match { color: var(--accent); font-weight: 600; }
 /* Rows that opt into wrapping (long full-value nodes, truncation warnings): relax the default
-   single nowrap line so the text wraps instead of extending past the viewport / freezing layout. */
+   single nowrap line so the text wraps instead of extending past the viewport / freezing layout.
+   `pre-wrap` (not `normal`) so a String constant's REAL line breaks render as line breaks. */
 .tree-row-wrap { white-space: normal; align-items: flex-start; }
-.tree-row-wrap .tree-label { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+.tree-row-wrap .tree-label { overflow: visible; text-overflow: clip; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 
 /* lazy node-explorer tab: search bar on top, on-demand tree filling below */
 .node-explorer { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }

@@ -36,17 +36,19 @@ describe('serializeTerm', () => {
   });
 
   it('emits term/name hints for the Apply and builtin/constant hints', () => {
-    // Apply: term: + id:3
+    // The id: hint always sits right AFTER the term-type token (not at end of line,
+    // where a long value would push it off-screen).
+    // Apply: term: + id:3 → `term: Apply id:3 {`
     expect(out.hints).toContainEqual({ line: 0, character: 0, text: 'term:', kind: 'term' });
     expect(out.hints).toContainEqual({ line: 0, character: 5, text: ' id:3', kind: 'name' });
-    // Builtin: term: + fn: + id:1
+    // Builtin: term: + id:1 + fn: → `term: Built-in id:1 fn: addInteger`
     expect(out.hints).toContainEqual({ line: 1, character: 7, text: 'term:', kind: 'term' });
+    expect(out.hints).toContainEqual({ line: 1, character: 15, text: ' id:1', kind: 'name' });
     expect(out.hints).toContainEqual({ line: 1, character: 16, text: 'fn:', kind: 'builtin_function' });
-    expect(out.hints).toContainEqual({ line: 1, character: 26, text: ' id:1', kind: 'name' });
-    // Constant: term: + type: + id:2
+    // Constant: term: + id:2 + type: → `term: Const id:2 type: Integer: "42"`
     expect(out.hints).toContainEqual({ line: 2, character: 7, text: 'term:', kind: 'term' });
+    expect(out.hints).toContainEqual({ line: 2, character: 12, text: ' id:2', kind: 'name' });
     expect(out.hints).toContainEqual({ line: 2, character: 13, text: 'type:', kind: 'constant_type' });
-    expect(out.hints).toContainEqual({ line: 2, character: 26, text: ' id:2', kind: 'name' });
   });
 });
 

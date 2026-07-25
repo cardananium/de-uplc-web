@@ -18,7 +18,7 @@ import {
 import { IDebuggerEngine } from '../debugger/debugger-engine.interface';
 import {
   UplcNode, NodeView, SimpleNode, LazyNode, TruncationInfoNode, TypeNode, PlutusDataNode,
-  valuePreview, stringPreview, fullValueNode, PREVIEW_LEN,
+  valuePreview, stringPreview, stringNeedsFull, fullValueNode, PREVIEW_LEN,
 } from './nodes';
 
 export type LazyKind = 'machineState' | 'context' | 'env' | 'value' | 'constant' | 'runtime' | 'term';
@@ -336,7 +336,9 @@ function childrenFor(
         }
         // Long scalars expand to a single full-value child (matches constantView's `collapsible`).
         case 'Integer': return c.value.length > PREVIEW_LEN ? [fullValueNode(c.value)] : [];
-        case 'String': return `"${c.value}"`.length > PREVIEW_LEN ? [fullValueNode(`"${c.value}"`)] : [];
+        // Strings also expand when they contain line breaks (the row preview shows them escaped;
+        // the full-value child shows the real breaks) — must match stringPreview's `collapsible`.
+        case 'String': return stringNeedsFull(c.value) ? [fullValueNode(`"${c.value}"`)] : [];
         case 'ByteString': return c.value.length > PREVIEW_LEN ? [fullValueNode(`0x${c.value}`)] : [];
         case 'Bls12_381G1Element': return c.serialized.length > PREVIEW_LEN ? [fullValueNode(`0x${c.serialized}`)] : [];
         case 'Bls12_381G2Element': return c.serialized.length > PREVIEW_LEN ? [fullValueNode(`0x${c.serialized}`)] : [];

@@ -144,7 +144,7 @@ class TermSerializer {
   readonly locations: TermLocation[] = [];
   readonly hints: TermHintInfo[] = [];
 
-  private createTermHints(line: number, termType: string, termId: number, prefixLength: number, termText: string = ''): void {
+  private createTermHints(line: number, termType: string, termId: number, prefixLength: number): void {
     const hints = this.hints;
 
     // Calculate exact position based on actual line content
@@ -161,25 +161,18 @@ class TermSerializer {
       kind: 'term',
     });
 
-    // "id:" hint - calculate position based on term text
-    // Find position before opening brace or at end of line
-    let idPos = prefixLength + termText.length;
-    const braceIndex = termText.indexOf(' {');
-    if (braceIndex !== -1) {
-      idPos = prefixLength + braceIndex;
-    } else if (termText.endsWith(',')) {
-      idPos = prefixLength + termText.length - 1;
-    }
-
+    // "id:" hint right AFTER the term-type token (`Var id:5 y`, `λ id:2 x {`) — not at
+    // end of line, where a long value (string constants especially) would push it
+    // off-screen and it would trail content it doesn't label.
     hints.push({
       line: line,
-      character: idPos,
+      character: startPos + this.getShortTermType(termType).length,
       text: ` id:${termId}`,
       kind: 'name',
     });
   }
 
-  private createBuiltinHints(line: number, termType: string, termId: number, functionName: string, prefixLength: number): void {
+  private createBuiltinHints(line: number, termType: string, termId: number, prefixLength: number): void {
     const hints = this.hints;
 
     // Calculate exact position based on actual line content
@@ -193,27 +186,24 @@ class TermSerializer {
       kind: 'term',
     });
 
-    // "fn:" hint after the term type
+    // "id:" hint right after the term type, then "fn:" before the function name:
+    // `Built-in id:8 fn: addInteger` (see createTermHints for the placement rationale).
     const shortTermType = this.getShortTermType(termType);
-    const fnHintPos = startPos + shortTermType.length + 1; // +1 for space after term type
     hints.push({
       line: line,
-      character: fnHintPos,
+      character: startPos + shortTermType.length,
+      text: ` id:${termId}`,
+      kind: 'name',
+    });
+    hints.push({
+      line: line,
+      character: startPos + shortTermType.length + 1, // +1 for space after term type
       text: `fn:`,
       kind: 'builtin_function',
     });
-
-    // "id:" hint at the end of line
-    const fullText = `${shortTermType} ${functionName}`;
-    hints.push({
-      line: line,
-      character: prefixLength + fullText.length,
-      text: ` id:${termId}`,
-      kind: 'name',
-    });
   }
 
-  private createConstantHints(line: number, termType: string, termId: number, constantType: string, prefixLength: number, termText: string = ''): void {
+  private createConstantHints(line: number, termType: string, termId: number, prefixLength: number): void {
     const hints = this.hints;
 
     // Calculate exact position based on actual line content
@@ -227,31 +217,20 @@ class TermSerializer {
       kind: 'term',
     });
 
-    // "type:" hint after "Const "
+    // "id:" right after "Const", then "type:" before the constant type:
+    // `Const id:2 type: Integer: 42` (see createTermHints for the placement rationale).
     const shortTermType = this.getShortTermType(termType);
-    const typeHintPos = startPos + shortTermType.length + 1; // +1 for space after "Const"
     hints.push({
       line: line,
-      character: typeHintPos,
-      text: `type:`,
-      kind: 'constant_type',
-    });
-
-    // "id:" hint - calculate position based on term text
-    // Find position before opening brace or at end of line
-    let idPos = prefixLength + termText.length;
-    const braceIndex = termText.indexOf(' {');
-    if (braceIndex !== -1) {
-      idPos = prefixLength + braceIndex;
-    } else if (termText.endsWith(',')) {
-      idPos = prefixLength + termText.length - 1;
-    }
-
-    hints.push({
-      line: line,
-      character: idPos,
+      character: startPos + shortTermType.length,
       text: ` id:${termId}`,
       kind: 'name',
+    });
+    hints.push({
+      line: line,
+      character: startPos + shortTermType.length + 1, // +1 for space after "Const"
+      text: `type:`,
+      kind: 'constant_type',
     });
   }
 
@@ -338,7 +317,9 @@ class TermSerializer {
 
   private formatConstantValue(value: ConstantData['value']): string {
     if (typeof value === 'string') {
-      return `"${value}"`;
+      // JSON-escape: a raw newline in a String constant would add physical lines
+      // the line counters never see, shifting every location/hint below it.
+      return JSON.stringify(value);
     } else if (typeof value === 'number') {
       return String(value);
     } else if (typeof value === 'boolean') {
@@ -628,7 +609,7 @@ class TermSerializer {
         if (shouldCreateHints) {
           // For root terms use indentLevel, for nested terms use prefix length
           const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength, output);
+          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
         }
         currentLine += 1;
         break;
@@ -637,7 +618,7 @@ class TermSerializer {
         output = `${this.getShortTermType(term.term_type)} {`;
         if (shouldCreateHints) {
           const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength, output);
+          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
         }
         currentLine += 1; // Apply { line
 
@@ -666,7 +647,7 @@ class TermSerializer {
         output = `${this.getShortTermType(term.term_type)} {`;
         if (shouldCreateHints) {
           const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength, output);
+          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
         }
         currentLine += 1; // Account for the header line
 
@@ -686,7 +667,7 @@ class TermSerializer {
         output = `${this.getShortTermType(term.term_type)} ${term.parameterName} {`;
         if (shouldCreateHints) {
           const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength, output);
+          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
         }
         currentLine += 1; // Lambda line
 
@@ -706,7 +687,7 @@ class TermSerializer {
         output = `${this.getShortTermType(term.term_type)} {`;
         if (shouldCreateHints) {
           const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength, output);
+          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
         }
         currentLine += 1; // Account for the header line
 
@@ -731,7 +712,7 @@ class TermSerializer {
           output = `${this.getShortTermType(term.term_type)} ${constantData.type}: ${this.formatConstantValue(constantData.value)}`;
           if (shouldCreateHints) {
             const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-            this.createConstantHints(currentLine, term.term_type, term.id, constantData.type, prefixLength, output);
+            this.createConstantHints(currentLine, term.term_type, term.id, prefixLength);
           }
           currentLine += 1;
         } else {
@@ -741,7 +722,7 @@ class TermSerializer {
             const firstLineOutput = `${this.getShortTermType(term.term_type)} ${constantData.type} {`;
             if (shouldCreateHints) {
               const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-              this.createConstantHints(currentLine, term.term_type, term.id, constantData.type, prefixLength, firstLineOutput);
+              this.createConstantHints(currentLine, term.term_type, term.id, prefixLength);
             }
 
             const structuredResult = this.renderStructuredType(constantData.type, constantData.value, currentLine, indentLevel, false);
@@ -752,7 +733,7 @@ class TermSerializer {
             const firstLineOutput = `${this.getShortTermType(term.term_type)} ${constantData.type} {`;
             if (shouldCreateHints) {
               const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-              this.createConstantHints(currentLine, term.term_type, term.id, constantData.type, prefixLength, firstLineOutput);
+              this.createConstantHints(currentLine, term.term_type, term.id, prefixLength);
             }
 
             // Use the parsed value from constantData, which already has type removed
@@ -782,7 +763,7 @@ class TermSerializer {
         output = `${this.getShortTermType(term.term_type)}`;
         if (shouldCreateHints) {
           const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength, output);
+          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
         }
         currentLine += 1;
         break;
@@ -791,7 +772,7 @@ class TermSerializer {
         output = `${this.getShortTermType(term.term_type)} ${term.fun}`;
         if (shouldCreateHints) {
           const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createBuiltinHints(currentLine, term.term_type, term.id, term.fun, prefixLength);
+          this.createBuiltinHints(currentLine, term.term_type, term.id, prefixLength);
         }
         currentLine += 1;
         break;
@@ -800,11 +781,11 @@ class TermSerializer {
         output = `${this.getShortTermType(term.term_type)} {`;
         if (shouldCreateHints) {
           const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength, output);
+          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
         }
         const constrHeader = [output, `  tag: ${term.constructorTag},`, '  fields: ['].join('\n');
         output = constrHeader;
-        currentLine += 2;
+        currentLine += 3; // header is 3 lines: "Constr {", "tag:", "fields: ["
 
         for (let i = 0; i < term.fields.length; i++) {
           output += '\n    ';
@@ -829,7 +810,7 @@ class TermSerializer {
         output = `${this.getShortTermType(term.term_type)} {`;
         if (shouldCreateHints) {
           const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength, output);
+          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
         }
         currentLine += 1; // Account for the header line
 

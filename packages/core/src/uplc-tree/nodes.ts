@@ -160,13 +160,22 @@ export function valuePreview(prefix: string, value: string): { label: string; co
     if (value.length <= PREVIEW_LEN) return { label: `${prefix}${value}`, collapsible: false };
     return { label: `${prefix}${value.slice(0, PREVIEW_LEN)}… (${value.length.toLocaleString('en-US')} chars — expand for full)`, collapsible: true };
 }
+/** True when a String constant needs a full-value child: too long for the row preview, or it
+ *  contains line breaks a single-line row can never show. */
+export function stringNeedsFull(raw: string): boolean {
+    return raw.length > PREVIEW_LEN || /[\r\n]/.test(raw);
+}
 /**
- * Preview for a String constant: quote AFTER slicing so a long string keeps a BALANCED pair of
- * quotes around the elided text (`name: "abc…"`), instead of an opening quote with no close.
+ * Preview for a String constant. The row body is JSON-escaped and quoted AFTER slicing, so the
+ * one-line preview keeps a BALANCED pair of quotes and a line break shows as `\n` instead of
+ * silently collapsing to a space. Values with real line breaks are expandable even when short —
+ * the full-value child renders the raw text with its line breaks (wrap rows use `pre-wrap`).
  */
 export function stringPreview(prefix: string, raw: string): { label: string; collapsible: boolean } {
-    if (raw.length <= PREVIEW_LEN) return { label: `${prefix}"${raw}"`, collapsible: false };
-    return { label: `${prefix}"${raw.slice(0, PREVIEW_LEN)}…" (${raw.length.toLocaleString('en-US')} chars — expand for full)`, collapsible: true };
+    const esc = JSON.stringify(raw).slice(1, -1); // escaped body without the surrounding quotes
+    if (!stringNeedsFull(raw)) return { label: `${prefix}"${esc}"`, collapsible: false };
+    if (esc.length <= PREVIEW_LEN) return { label: `${prefix}"${esc}" (has line breaks — expand for full)`, collapsible: true };
+    return { label: `${prefix}"${esc.slice(0, PREVIEW_LEN)}…" (${raw.length.toLocaleString('en-US')} chars — expand for full)`, collapsible: true };
 }
 /** The single child of an expanded long value: the FULL value, capped at 16 MB (then cut + noted).
  *  Marked `wrap` so the editor renders it as wrapping/scrollable text, not one pathological nowrap line. */
