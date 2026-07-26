@@ -1,0 +1,244 @@
+/* Profiler surfaces: the sidebar summary and the report tab.
+   Everything here is `.prof-*`; the heat LANE (the editor's gutter bar) lives in term-editor.css
+   next to the other Monaco decoration classes. The two share the `--prof-c` / `--prof-w` pair on
+   purpose — same idea, one bar coloured by bucket — but in a table cell `--prof-w` is a PERCENTAGE
+   and both values are written inline, so the cell never inherits a lane width in px. */
+
+/* ── sidebar panel ───────────────────────────────────────────────────────────────────────────── */
+
+.prof-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+.prof-meta { color: var(--fg-dim); font-size: 11.5px; }
+.prof-note {
+  font-size: 11.5px; line-height: 1.5; color: var(--fg-muted);
+}
+.prof-note strong { color: var(--fg); font-weight: 600; }
+
+/* Outcome pill. Repeated on EVERY surface (sidebar, report header, status bar): a partial profile
+   that is not marked as partial reads as a complete one. Text + icon, never tone alone. */
+.prof-pill {
+  display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
+  padding: 3px 9px 3px 7px; border-radius: var(--radius);
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+  background: var(--bg-subtle); color: var(--fg-muted);
+}
+.prof-pill.tone-done { background: color-mix(in srgb, var(--accent-green) 16%, transparent); color: var(--badge-done-fg); }
+.prof-pill.tone-error { background: color-mix(in srgb, var(--error-fg) 16%, transparent); color: var(--badge-error-fg); }
+.prof-pill.tone-warn { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--badge-paused-fg); }
+.prof-pill.tone-profile { background: color-mix(in srgb, var(--dbg-profile) 16%, transparent); color: var(--badge-profile-fg); }
+
+/* Top-5. TWO lines per entry, like .budget-metric: the sidebar is 372px minus padding, borders and
+   its own scrollbar — a single line drops the node label to nothing. */
+.prof-top { margin-top: 8px; display: flex; flex-direction: column; gap: 7px; }
+.prof-top-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.prof-top-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 2px 6px; align-items: center; }
+.prof-top-rank { grid-row: span 2; align-self: start; padding-top: 2px; color: var(--fg-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+.prof-top-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.prof-top-label .prof-ln { color: var(--fg-muted); font-family: var(--font-mono); font-size: 11px; }
+.prof-top-stats { grid-column: 2; font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--fg-muted); }
+.prof-top-stats b { color: var(--fg); font-weight: 600; }
+.prof-top-row .prof-reveal { grid-column: 3; grid-row: span 2; }
+
+/* Reveal button — the one action on a row; visible on hover/focus like .tree-open-tab, but always
+   visible in the sidebar where there is no row hover affordance otherwise. */
+.prof-reveal {
+  background: none; border: none; padding: 2px 4px; border-radius: var(--radius-sm);
+  color: var(--fg-muted); cursor: pointer; display: inline-flex; align-items: center;
+}
+.prof-reveal:hover:not(:disabled), .prof-reveal:focus-visible { color: var(--accent); background: var(--bg-subtle); }
+.prof-reveal:disabled { color: var(--disabled-fg); cursor: default; }
+
+.prof-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; }
+.prof-check input { width: auto; flex: 0 0 auto; }
+.prof-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+/* Progress while a profile runs. No animation: the moving integers ARE the liveness signal, which
+   is automatically right under prefers-reduced-motion. */
+.prof-progress { margin-top: 10px; }
+.prof-progress .budget-meter-row { margin-top: 0; }
+
+/* Narrow layout: the sidebar becomes a 46vh column above the editor with nine panels in it, so the
+   summary would sit below the fold anyway. The outcome pill and the way into the report stay. */
+@media (max-width: 900px) {
+  .prof-panel .prof-collapsible { display: none; }
+}
+
+/* ── report tab ──────────────────────────────────────────────────────────────────────────────── */
+
+/* The tab itself does NOT scroll: the header is fixed and the table scrolls under it, so the
+   table's own sticky `thead` has somewhere to stick that is not behind the header. Stacked mode
+   (below 760px) hands the scrolling back to the tab — nested scrollers on a narrow screen are
+   worse than one long page. */
+.prof-tab {
+  flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column;
+  overflow: hidden;
+}
+/* The outcome pill, the semantics sentence and the data-decoding headline are the three things
+   that must not scroll away from the numbers they qualify. */
+.prof-head {
+  flex: 0 0 auto; position: sticky; top: 0; z-index: 2;
+  padding: 10px 14px 8px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.prof-head-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.prof-head-row .prof-spacer { flex: 1 1 auto; }
+.prof-title { font-size: 12.5px; color: var(--fg-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.prof-title b { color: var(--fg); font-weight: 600; }
+/* The word that carries the "exact, not sampled" tooltip — dotted underline so it reads as one. */
+.prof-hint { border-bottom: 1px dotted var(--border-strong); cursor: help; }
+
+/* The two budget metrics side by side; each is the sidebar's own .budget-metric markup. */
+.prof-budgets { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 4px 22px; }
+
+.prof-headline {
+  display: flex; align-items: flex-start; gap: 6px;
+  font-size: 12.5px; line-height: 1.5; color: var(--fg);
+}
+.prof-headline .codicon { color: var(--dbg-profile); margin-top: 2px; }
+.prof-headline b { font-weight: 700; }
+
+.prof-controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.prof-controls .prof-group { display: inline-flex; align-items: center; gap: 6px; }
+.prof-controls .prof-group > span {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg-dim);
+}
+
+/* Filter chips. Every chip is removable, so an empty table is always one click from being full
+   again — and every cap the report applies is a chip, never a silent rule. */
+.prof-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.prof-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px 2px 9px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface-3);
+  font-size: 11.5px; color: var(--fg-muted); white-space: nowrap;
+}
+.prof-chip.is-auto { border-color: var(--dbg-profile); color: var(--fg); }
+.prof-chip b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.prof-chip-x {
+  background: none; border: none; padding: 0 2px; color: var(--fg-muted); cursor: pointer;
+  display: inline-flex; border-radius: 999px;
+}
+.prof-chip-x:hover { color: var(--error-fg); }
+.prof-search { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-muted); }
+.prof-search input { padding: 3px 8px; font-size: 12.5px; width: 190px; }
+
+/* Split: table + node detail. Below 760px (measured on the TAB, not the viewport) the detail stops
+   being a column and becomes a <details> block under the table — see .is-stacked. */
+.prof-split { flex: 1 1 auto; min-height: 0; display: flex; }
+.prof-main { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; padding: 0 0 14px; }
+.prof-side {
+  flex: 0 0 320px; min-width: 0; min-height: 0; overflow: auto; padding: 10px 14px;
+  border-left: 1px solid var(--border);
+}
+.prof-tab.is-stacked { overflow: auto; }
+.prof-tab.is-stacked .prof-split { flex-direction: column; }
+.prof-tab.is-stacked .prof-main, .prof-tab.is-stacked .prof-side { overflow: visible; }
+.prof-tab.is-stacked .prof-side { flex: 0 0 auto; width: 100%; border-left: none; border-top: 1px solid var(--border); }
+
+/* ── the ranked table ────────────────────────────────────────────────────────────────────────── */
+
+.prof-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.prof-table th, .prof-table td { padding: 3px 8px; text-align: right; vertical-align: top; }
+.prof-table th:nth-child(-n + 3), .prof-table td:nth-child(-n + 3) { text-align: left; }
+.prof-table thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface-2); border-bottom: 1px solid var(--border-strong);
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--fg-dim); white-space: nowrap; padding-top: 6px; padding-bottom: 4px;
+}
+.prof-table thead th.is-sorted { color: var(--fg); }
+.prof-table thead th.is-muted { opacity: 0.55; }
+.prof-th .prof-sort {
+  background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 3px; text-transform: inherit; letter-spacing: inherit;
+}
+.prof-th .prof-sort:hover { color: var(--fg); }
+.prof-th .prof-sort .codicon { font-size: 11px; }
+/* Second line of a header / a cell: the same column, one denominator down. */
+.prof-sub { display: block; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--fg-muted); }
+.prof-table tbody .prof-sub { font-size: 11px; }
+
+.prof-table tbody tr { cursor: default; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+.prof-table tbody tr:hover { background: var(--bg-subtle); }
+.prof-table tbody tr.is-selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+/* The whole list is ONE tab stop with a roving aria-activedescendant, so the "focused" row needs a
+   visible marker of its own — 300 focusable rows would be an unusable tab order. */
+.prof-table tbody tr.is-active td:first-child { box-shadow: inset 2px 0 0 0 var(--accent); }
+/* The grid itself is the tab stop (see TermsTable), so the ring belongs on the table, not on the
+   row group — `rowgroup` cannot hold `aria-activedescendant` and so cannot be the focused element. */
+.prof-table[role='grid']:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* No location in this rendering: nothing to reveal, so the row carries no click handler and reads
+   as inert (the acceptance tests). Its cost is still counted — in the warning line under the table. */
+.prof-table tbody tr[aria-disabled='true'] td { color: var(--fg-muted); }
+.prof-noloc { font-style: italic; }
+
+.prof-node { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The source fragment after the kind and the #id: decoration, so it recedes behind both. */
+.prof-frag { color: var(--fg-dim); font-family: var(--font-mono); font-size: 11px; }
+/* Subtree numbers are muted: a different denominator from the self column next to them. */
+.prof-sub-col { color: var(--fg-muted); }
+.prof-id { color: var(--fg-dim); font-family: var(--font-mono); font-size: 11px; }
+.prof-num { font-family: var(--font-mono); }
+/* The proportional bar rides ON the cell: no extra DOM, impossible to desynchronise from the
+   number it sits under. `--prof-c` is the row's bucket colour, `--prof-w` its share in PERCENT —
+   both written inline, overriding whatever the lane classes mean by the same names. */
+.prof-bar {
+  background-image: linear-gradient(90deg, var(--prof-c) 0 var(--prof-w), transparent var(--prof-w));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 100% 3px;
+}
+.prof-approx { color: var(--warning); font-weight: 700; cursor: help; }
+
+/* Narrow (< 1000px of TABLE width): drop the two secondary denominators, never Hits and never
+   CPU/hit — those are what separate "rewrite the loop" from "replace the builtin". */
+.prof-tab.is-narrow .prof-drop { display: none; }
+
+.prof-tail { padding: 10px 14px 0; font-size: 12px; color: var(--fg-muted); line-height: 1.6; }
+.prof-tail button { margin-left: 8px; }
+/* Not scoped to the tail: the step-kinds summary wears it when the two independently counted sides
+   of the accounting invariant do not add up to `*_spent`. */
+.prof-warn { color: var(--warning); }
+.prof-foot {
+  margin: 12px 14px 0; padding-top: 8px; border-top: 1px solid var(--border);
+  font-size: 11.5px; line-height: 1.55; color: var(--fg-muted);
+}
+
+/* ── builtins / step kinds ───────────────────────────────────────────────────────────────────── */
+
+.prof-group-row td { font-weight: 600; }
+.prof-group-row .prof-twisty {
+  background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; font-weight: 600;
+}
+.prof-child td:first-child { padding-left: 26px; color: var(--fg-muted); }
+.prof-total-row td { border-top: 1px solid var(--border-strong); font-weight: 600; }
+/* StartUp is not a machine step — it is a flat charge in ManualMachine::new — so it is separated
+   from the nine step kinds rather than listed among them. */
+.prof-startup-row td { border-top: 1px solid var(--border); color: var(--fg-muted); }
+
+/* ── node detail ─────────────────────────────────────────────────────────────────────────────── */
+
+.prof-detail-title { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
+.prof-detail-title .prof-reveal { margin-left: auto; }
+.prof-kv { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 3px 10px; align-items: baseline; margin: 8px 0 0; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.prof-kv dt { color: var(--fg-muted); }
+.prof-kv dd { margin: 0; text-align: right; font-family: var(--font-mono); }
+.prof-kv .prof-kv-pct { color: var(--fg-muted); }
+.prof-sec-title {
+  margin-top: 12px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.prof-anc { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 2px 8px; align-items: baseline; margin-top: 6px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.prof-anc .prof-id { white-space: nowrap; }
+.prof-anc .prof-anc-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prof-anc-more { grid-column: 1 / -1; }
+.prof-anc-more button {
+  background: none; border: none; padding: 0; font: inherit; font-size: 11.5px; color: var(--fg-muted);
+  cursor: pointer; text-decoration: underline;
+}
+.prof-anc-more button:hover { color: var(--accent); }

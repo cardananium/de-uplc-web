@@ -110,8 +110,8 @@ export class KoiosClient implements DataProvider {
 
     // Retry logic
     for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
-      // NOTE (web migration §5.5 fix): build a FRESH per-attempt AbortSignal. The original
-      // code created one signal outside the loop and reused it across retries, so after the
+      // Build a FRESH per-attempt AbortSignal. An earlier version of this
+      // loop created one signal outside it and reused it across retries, so after the
       // first timeout every retry aborted instantly. Create it here, once per attempt.
       const requestOptions: RequestInit = {
         method,

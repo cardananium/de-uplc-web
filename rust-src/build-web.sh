@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build the de-uplc engine as a browser-loadable WASM module (wasm-pack --target web).
 #
-# Why this script exists (M0 spike, 2026-06-02):
+# Why this script exists:
 #   blst (BLS12-381) ships C/asm that cc-rs compiles to wasm32. Apple's system
 #   clang has NO WebAssembly backend ("No available targets ... wasm32-unknown-unknown"),
 #   so on macOS we must point cc-rs at Homebrew LLVM's clang, which does.

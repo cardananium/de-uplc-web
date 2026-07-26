@@ -1,8 +1,7 @@
 /* Monaco term editor: container + breakpoint glyphs + debugger/finished/error
-   line highlights with trailing injected text. Light theme for now; the dark
-   variant + the per-theme glyph swap (plan §5.4.2) arrives with the M7 theming
-   pass — the glyphs are CSS-driven (background-image data-URIs) precisely so
-   that swap is a class/variable change, not a code change. */
+   line highlights with trailing injected text. Both themes are covered; the
+   glyphs are CSS-driven (background-image data-URIs) precisely so the per-theme
+   swap stays a class/variable change, not a code change. */
 
 /* The editor fills the right column: the panel is a flex column (tokens.css), the
    tab-content area flexes, and the wrap + Monaco host stretch to fill it. Monaco is
@@ -33,10 +32,19 @@
 .editor-statusbar .sb-paused { color: var(--accent); }
 .editor-statusbar .sb-done { color: var(--accent-green); }
 .editor-statusbar .sb-error { color: var(--error-fg); }
+/* Position in the hot list (`hot 17 / 31 · self 8.44%`). Carries the profiler accent — the one
+   place in the status bar that is about the profile and not about the debug session, and it stays
+   lit while the heat layer is toggled off: Ctrl/Cmd+Alt+P hides the MARKUP, not the profile. */
+.editor-statusbar .sb-hot { color: var(--dbg-profile); display: inline-flex; align-items: center; gap: 5px; }
+.editor-statusbar .sb-hot .codicon { font-size: 12px; }
 .term-editor {
   width: 100%;
   height: 100%;
 }
+/* The no-term state, drawn OVER the live editor (which stays created and mounted) rather
+   than in place of it. It hosts the shared `EmptyState`; the opaque fill hides the empty model
+   behind it and `pointer-events: none` keeps the editor underneath clickable the instant a term
+   arrives. */
 .term-editor-empty {
   position: absolute;
   inset: 0;
@@ -135,7 +143,7 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='none' stroke='%23888' stroke-width='2'/%3E%3C/svg%3E");
 }
 .monaco-editor .margin:hover .glyph-bp-possible { opacity: 0.7; }
-/* Per-theme glyph swap is a CSS-only change (plan §5.4.2): brighter possible-ring on dark. */
+/* Per-theme glyph swap is a CSS-only change: brighter possible-ring on dark. */
 :root[data-theme='dark'] .glyph-bp-possible {
   opacity: 0.4;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='none' stroke='%23adbac7' stroke-width='2'/%3E%3C/svg%3E");
@@ -181,6 +189,76 @@
   background: var(--error-fg);
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 4.5 11.5 11.5 M11.5 4.5 4.5 11.5' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 4.5 11.5 11.5 M11.5 4.5 4.5 11.5' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+/* ── Profiler heat lane ──────────────────────────────────────────────────────────────────────
+   The cost bar lives in the `linesDecorations` column — between the line numbers and the text —
+   and NOT in the line background: the background and the left rail belong to .dbg-line /
+   .dbg-finished-line / .dbg-error-line / .term-locate-line, and the glyph margin belongs to the
+   breakpoints, so heat in either channel would fight the debugger on exactly the line the user is
+   looking at. The lane is exclusive only because folding is off (TermEditor.tsx): the folding
+   chevron renders into this same column with a full-size box and eats the click.
+
+   No box-shadow ring here, ever: the class lands on Monaco's `.cldr` element, whose width is
+   written inline by the layout and whose height is the full line, so an inset shadow would outline
+   the 16 × 20 CELL rather than the bar and the editor would grow a visible grid. Where a ring is
+   needed (prefers-contrast below) it rides as a second background layer.
+
+   WIDTH is a required redundant channel: 6 steps of 2px, 4 → 14px, so the bucket still reads with
+   colour completely lost. Colour only ORDERS the buckets. */
+.prof-lane {
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-image: linear-gradient(var(--prof-c), var(--prof-c));
+  background-size: var(--prof-w) 8px;
+  cursor: pointer;
+}
+.prof-heat-0 { --prof-c: var(--prof-heat-0); --prof-w:  4px; }
+.prof-heat-1 { --prof-c: var(--prof-heat-1); --prof-w:  6px; }
+.prof-heat-2 { --prof-c: var(--prof-heat-2); --prof-w:  8px; }
+.prof-heat-3 { --prof-c: var(--prof-heat-3); --prof-w: 10px; }
+.prof-heat-4 { --prof-c: var(--prof-heat-4); --prof-w: 12px; }
+.prof-heat-5 { --prof-c: var(--prof-heat-5); --prof-w: 14px; }
+
+/* The `≈` marker in the LANE: this line's cost is mostly Return-step cost, which v1
+   attribution charges to the last node that executed rather than to the apply site it returns
+   into. Dimmed rather than recoloured or re-widthed, because both of those channels are already
+   spoken for — colour ORDERS the buckets and width IDENTIFIES them, so a marker in either would
+   read as "a different bucket" instead of "this bucket, less certain".
+   It is never the only carrier: the bar's native tooltip and its hover card both print `≈` and say
+   what it means. Under `apply_site` attribution the class is never emitted at all. */
+.prof-lane-approx { opacity: 0.6; }
+
+/* High contrast: COLOUR is deliberately coarsened to three levels and the width keeps carrying all
+   six buckets. The dynamic range is capped by the background (21.0:1 on #ffffff, 18.9:1 on
+   #0c1119), so a six-step ladder with the floor raised to 4.5:1 separates WORSE under CVD than the
+   base ramp does. Pairs are (0,1) (2,3) (4,5).
+   Named limitation: this coarsens the LANE only. The overview-ruler marks are painted by Monaco
+   from `deuplc.profHeat0..5` in the theme maps, which a media query cannot reach, and the app has
+   no JS subscription to `prefers-contrast` — so the ruler stays six-level. That is
+   acceptable because the ruler is an overview channel where a single bucket is not read anyway. */
+@media (prefers-contrast: more) {
+  :root {
+    --prof-heat-0: #756a00; --prof-heat-1: #756a00;  /*  5.50:1 on #ffffff · 5.09:1 on the caret line */
+    --prof-heat-2: #791b73; --prof-heat-3: #791b73;  /*  9.47:1 · 8.76:1 */
+    --prof-heat-4: #040947; --prof-heat-5: #040947;  /* 18.50:1 · 17.12:1 */
+  }
+  :root[data-theme='dark'] {
+    --prof-heat-0: #a3881d; --prof-heat-1: #a3881d;  /*  5.49:1 on #0c1119 · 5.11:1 on the caret line */
+    --prof-heat-2: #f59ec2; --prof-heat-3: #f59ec2;  /*  9.51:1 · 8.85:1 */
+    --prof-heat-4: #fae0ff; --prof-heat-5: #fae0ff;  /* 15.47:1 · 14.39:1 */
+  }
+  /* The ring as a second background layer — the bar sits 1px inside a border-strong plate. */
+  .prof-lane {
+    background-image: linear-gradient(var(--border-strong), var(--border-strong)),
+                      linear-gradient(var(--prof-c), var(--prof-c));
+    background-size: var(--prof-w) 8px, calc(var(--prof-w) - 2px) 6px;
+    background-position: left center, 1px center;
+  }
+  /* The `≈` dimming is dropped here: it would take the contrast ratios the values above are chosen
+     for (5.5:1 / 9.5:1 / 18.5:1) back below the floor this media query exists to raise. The marker
+     survives in the bar's tooltip and hover card, which is where it is readable anyway. */
+  .prof-lane-approx { opacity: 1; }
 }
 
 /* Transient flash when a term is revealed from an inspector tree row ("reveal in editor").

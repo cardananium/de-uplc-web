@@ -1,9 +1,10 @@
 // Pure term serializer — ported verbatim from the VS Code extension's
 // `term-viewer.ts` (`processTermWithLocations` + formatters + hint builders +
-// `findTermAtLine`/`findNearestTerm`). This is platform-agnostic string/range
-// math: it turns a `Term` into the exact text the editor renders, plus the
-// per-term line ranges (`TermLocation[]`, the line↔termId mapping that powers
-// breakpoints and the debugger-line highlight) and inlay hints (`TermHintInfo[]`).
+// `findTermAtLine`/`findNearestTerm`, the last two since moved onto `TermIndex`).
+// This is platform-agnostic string/range math: it turns a `Term` into the exact
+// text the editor renders, plus the per-term line ranges (`TermLocation[]`, the
+// line↔termId mapping that powers breakpoints, the debugger-line highlight and
+// the profiler) and inlay hints (`TermHintInfo[]`).
 //
 // The original used `json-bigint` with `storeAsString: true`. In this data model
 // every large integer already arrives as a string (`Constant.Integer.value: string`,
@@ -12,11 +13,21 @@
 // core dependency-free (matching `uplc-tree/nodes.ts`).
 
 import type { Constant, Term, Type } from '../debugger-types';
+import { termLabel } from './builtin-name';
+import { termIndexFor, type TermView } from './term-index';
 
 export interface TermLocation {
   startLine: number;
+  /** EXCLUSIVE here (one past the node's last line) — `uplc-pretty.ts` stores it INCLUSIVE.
+   *  Nobody compares these raw: `TermIndex` normalises both to inclusive and owns the ranges. */
   endLine: number;
   termId: number;
+  /** The node's shape. Filled here because the profiler's `Node` column has nowhere else to get
+   *  it from — the two renderings print the same node differently, so reading it back out of the
+   *  rendered line would make the column change with the Term view. */
+  kind: Term['term_type'];
+  /** Builtin name / variable name / lambda parameter, when the shape has one (`termLabel`). */
+  label?: string;
 }
 
 interface ConstantData {
@@ -69,12 +80,6 @@ export function serializeTerm(term: Term): SerializedTerm {
   return { text: result.text, locations: s.locations, hints: s.hints };
 }
 
-/** Most-nested location (smallest line span) among `locs` — the tie-break findTermAtLine uses. */
-function mostNested(locs: TermLocation[]): TermLocation {
-  return locs.reduce((best, cur) =>
-    cur.endLine - cur.startLine < best.endLine - best.startLine ? cur : best);
-}
-
 /** Append a child's rendered text, re-indenting its continuation lines by `cont` (`'\n' + spaces`);
  *  the first line stays inline after the caller's `field: ` prefix. */
 function appendChild(text: string, cont: string): string {
@@ -82,43 +87,33 @@ function appendChild(text: string, cont: string): string {
   return lines.length > 1 ? lines[0] + lines.slice(1).map((l) => cont + l).join('') : text;
 }
 
+// The three line→term lookups below live on `TermIndex` now (linear scans before; the index also
+// fixes the tree view's one-line overlap). They stay exported in this shape because the editor and
+// the store hold `termLocations`, not an index — `termIndexFor` memoises on the array's identity,
+// so the array is walked once per rendering, not once per call. `view` decides how `endLine` is
+// read; it defaults to the app's default view, and a caller rendering canonical UPLC MUST pass
+// `'uplc'` or a closing paren resolves to the wrong node. Callers that already hold a `TermIndex`
+// should call its methods directly.
+
 /**
- * Map an editor line (0-based) to the most specific term that owns it.
- * First prefers terms starting exactly on the line (most nested wins), then
- * falls back to the most nested containing term. Ported from `term-viewer.ts`.
+ * Map an editor line (0-based) to the most specific term that owns it: a term starting exactly
+ * there wins (most nested first), otherwise the most nested term spanning it.
  */
-export function findTermAtLine(line: number, termLocations: TermLocation[]): TermLocation | undefined {
-  // First, try to find terms that start exactly at this line
-  const termsStartingAtLine = termLocations.filter((loc) => loc.startLine === line);
-
-  if (termsStartingAtLine.length > 0) {
-    // If multiple terms start at the same line, prefer the most nested one (smallest range)
-    return mostNested(termsStartingAtLine);
-  }
-
-  // If no terms start at this line, find all terms that contain the given line
-  const containingTerms = termLocations.filter((loc) => line >= loc.startLine && line <= loc.endLine);
-
-  if (containingTerms.length === 0) {
-    return undefined;
-  }
-
-  // Return the most nested term (smallest range)
-  return mostNested(containingTerms);
+export function findTermAtLine(
+  line: number,
+  termLocations: TermLocation[],
+  view: TermView = 'tree',
+): TermLocation | undefined {
+  return termIndexFor(termLocations, view).findTermAtLine(line);
 }
 
-/** Find the term whose start line is closest to `line`. Ported from `term-viewer.ts`. */
-export function findNearestTerm(line: number, termLocations: TermLocation[]): TermLocation | undefined {
-  if (termLocations.length === 0) {
-    return undefined;
-  }
-
-  // Find the term with startLine closest to the current line
-  return termLocations.reduce((nearest, current) => {
-    const currentDistance = Math.abs(current.startLine - line);
-    const nearestDistance = Math.abs(nearest.startLine - line);
-    return currentDistance < nearestDistance ? current : nearest;
-  });
+/** Find the term whose start line is closest to `line`. */
+export function findNearestTerm(
+  line: number,
+  termLocations: TermLocation[],
+  view: TermView = 'tree',
+): TermLocation | undefined {
+  return termIndexFor(termLocations, view).findNearestTerm(line);
 }
 
 /**
@@ -129,15 +124,9 @@ export function findNearestTerm(line: number, termLocations: TermLocation[]): Te
 export function termAtLineForBreakpoint(
   line: number,
   termLocations: TermLocation[],
+  view: TermView = 'tree',
 ): { line: number; termId: number } | undefined {
-  let termLocation = findTermAtLine(line, termLocations);
-  if (!termLocation) {
-    termLocation = findNearestTerm(line, termLocations);
-    if (!termLocation) {
-      return undefined;
-    }
-  }
-  return { line: termLocation.startLine, termId: termLocation.termId };
+  return termIndexFor(termLocations, view).termAtLineForBreakpoint(line);
 }
 
 class TermSerializer {
@@ -600,6 +589,8 @@ class TermSerializer {
       startLine: currentLine,
       endLine: currentLine, // Will be updated later
       termId: term.id,
+      kind: term.term_type,
+      label: termLabel(term),
     });
 
     let output = '';

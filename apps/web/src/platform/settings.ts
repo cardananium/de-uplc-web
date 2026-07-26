@@ -9,6 +9,10 @@ import type { Network, SettingsStore, NetworkPrompt } from '@de-uplc/core';
 export type ThemePref = 'light' | 'dark' | 'system';
 /** Term editor rendering: the debug tree, or canonical UPLC syntax. */
 export type TermView = 'tree' | 'uplc';
+/** Which cost the profiler ranks and colours by. Global: heat, ruler, F8, tables, hover. */
+export type ProfileMetric = 'cpu' | 'mem';
+/** Which cost the REPORT TABLE sorts by. Heat/ruler/F8/top-5 always use `self`. */
+export type ProfileScope = 'self' | 'subtree';
 
 export interface Settings {
   apiKey: string;
@@ -22,6 +26,21 @@ export interface Settings {
   searchDepth: number;
   /** ms to pause between machine steps during a run, so it can be watched (0 = full speed). */
   stepDelay: number;
+  // ── profiler ──
+  // The first three are ALSO store fields (dual-written like termView/inlayHints), because the
+  // sidebar and the report drive them live; the last three are read from here at the point of use.
+  /** Metric the profiler opens on. */
+  profileMetric: ProfileMetric;
+  /** Cost scope the report table opens on. */
+  profileScope: ProfileScope;
+  /** Paint the cost lane in the term editor. */
+  profileHeat: boolean;
+  /** Show per-line costs as inlay hints at line ends. */
+  profileInlay: boolean;
+  /** Hide report rows below this share of the run, in PERCENT (0 = show everything). */
+  profileMinShare: number;
+  /** Whole-run step cap. Reaching it stops the profile and reports it as partial (`Limit`). */
+  profileMaxSteps: number;
 }
 
 const KEYS = {
@@ -34,11 +53,19 @@ const KEYS = {
   termView: 'deuplc.termView',
   searchDepth: 'deuplc.searchDepth',
   stepDelay: 'deuplc.stepDelay',
+  profileMetric: 'deuplc.profile.metric',
+  profileScope: 'deuplc.profile.scope',
+  profileHeat: 'deuplc.profile.heat',
+  profileInlay: 'deuplc.profile.inlay',
+  profileMinShare: 'deuplc.profile.minShare',
+  profileMaxSteps: 'deuplc.profile.maxSteps',
 } as const;
 
 const NETWORKS: Network[] = ['mainnet', 'preview', 'preprod'];
 const THEMES: ThemePref[] = ['light', 'dark', 'system'];
 const TERM_VIEWS: TermView[] = ['tree', 'uplc'];
+export const PROFILE_METRICS: ProfileMetric[] = ['cpu', 'mem'];
+export const PROFILE_SCOPES: ProfileScope[] = ['self', 'subtree'];
 
 const DEFAULTS: Settings = {
   apiKey: '',
@@ -50,6 +77,12 @@ const DEFAULTS: Settings = {
   termView: 'tree',
   searchDepth: 5,
   stepDelay: 0,
+  profileMetric: 'cpu',
+  profileScope: 'self',
+  profileHeat: true,
+  profileInlay: true,
+  profileMinShare: 0.1,
+  profileMaxSteps: 50_000_000,
 };
 
 function readStr(key: string, fallback: string): string {
@@ -87,6 +120,13 @@ function load(): Settings {
     termView: readEnum(KEYS.termView, TERM_VIEWS, DEFAULTS.termView),
     searchDepth: readNum(KEYS.searchDepth, DEFAULTS.searchDepth),
     stepDelay: readNum0(KEYS.stepDelay, DEFAULTS.stepDelay),
+    profileMetric: readEnum(KEYS.profileMetric, PROFILE_METRICS, DEFAULTS.profileMetric),
+    profileScope: readEnum(KEYS.profileScope, PROFILE_SCOPES, DEFAULTS.profileScope),
+    profileHeat: readBool(KEYS.profileHeat, DEFAULTS.profileHeat),
+    profileInlay: readBool(KEYS.profileInlay, DEFAULTS.profileInlay),
+    // 0 is a legal threshold ("show everything"), so readNum0, not readNum.
+    profileMinShare: readNum0(KEYS.profileMinShare, DEFAULTS.profileMinShare),
+    profileMaxSteps: readNum(KEYS.profileMaxSteps, DEFAULTS.profileMaxSteps),
   };
 }
 

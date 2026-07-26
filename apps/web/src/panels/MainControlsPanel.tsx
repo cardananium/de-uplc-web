@@ -5,8 +5,9 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   buttonStates, redeemerOptions, isConcreteRedeemer,
 } from './button-states';
-
-const fmt = (n?: number) => (typeof n === 'number' ? n.toLocaleString('en-US') : '0');
+// One number formatter for the whole app: the profiler prints the same ExUnits figures next to
+// these ones, and two `toLocaleString` call sites are two chances to disagree.
+import { fmtInt as fmt } from '../profile/format';
 
 export function MainControlsPanel() {
   // Per-field selectors (not `useStore()`) so this panel re-renders only when its own inputs
@@ -103,11 +104,15 @@ export function MainControlsPanel() {
 
 /**
  * One budget metric: Spent / Limit (full grouped numbers) + a usage meter.
+ *
+ * Exported because the profiler reuses it VERBATIM (with `label="CPU"` / `"Memory"` instead of
+ * `"Ex units"`): a profile's spent/limit/overspend is the same quantity as a live run's, and the
+ * two must not grow two visual languages.
  * `limit` is the engine's `*Available` field — the redeemer's declared ExUnits (a constant
  * cap = `real_budget`), NOT a remaining balance. So that value IS the limit; usage = spent / limit
  * and overspend is spent > limit.
  */
-function BudgetMetric({ label, spent, limit, loading }: {
+export function BudgetMetric({ label, spent, limit, loading }: {
   label: string; spent?: number; limit?: number; loading: boolean;
 }) {
   const has = typeof spent === 'number' && typeof limit === 'number';

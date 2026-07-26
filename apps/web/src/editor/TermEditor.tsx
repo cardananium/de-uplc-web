@@ -1,9 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import type * as MonacoT from 'monaco-editor';
-import { termAtLineForBreakpoint, type TermLocation } from '@de-uplc/core';
+import { termAtLineForBreakpoint, termIndexFor, type TermHintInfo, type TermLocation, type TermView } from '@de-uplc/core';
 import { ensureMonaco, type MonacoNS } from './monaco';
 import { currentThemeName } from './theme';
 import { setTermFindHandler } from './editor-actions';
+import { useTabsStore, TERM_TAB } from './tabs-store';
+import {
+  applyProfileHeat,
+  gotoLine,
+  hotStatus,
+  profileInlayHints,
+  profileOutcomeNote,
+  registerProfileActions,
+  showInProfile,
+  LANE_CAP,
+  LANE_CAP_NOTE,
+} from './useProfileHeat';
+import { Codicon } from '../components/Codicon';
+import { EmptyState } from '../components/EmptyState';
 import { useStore, revealTermInEditor, type Breakpoint } from '../store';
 import { useSettings } from '../platform/settings';
 import './term-editor.css';
@@ -15,6 +29,44 @@ import './term-editor.css';
 
 let inlayChangeEmitter: MonacoT.Emitter<void> | undefined;
 let inlayRegistered = false;
+
+/**
+ * `termHints` bucketed by line: `hints[start[ln] … start[ln + 1])` are the hints of 0-based line
+ * `ln`. A counting sort, built once, so the provider can answer a viewport query in O(window).
+ *
+ * This is a PRECONDITION of the profiler's hint block, not an optimisation: Monaco re-queries
+ * the provider on every scroll, the serializer pushes 1–3 hints per node, and this loop now shares
+ * the call with `profileInlayHints` — a linear scan here would make every scroll frame O(hints).
+ */
+interface HintIndex {
+  hints: readonly TermHintInfo[];
+  /** Prefix sums, length `maxLine + 2`; `start[ln + 1] - start[ln]` is line `ln`'s hint count. */
+  start: Int32Array;
+  maxLine: number;
+}
+
+// Memoised on the ARRAY IDENTITY, exactly like `termIndexFor` for locations: the store replaces
+// `termHints` in the same `set()` that replaces `termText`/`termLocations`, so identity changes
+// precisely when the term is re-rendered and never otherwise.
+const HINT_INDEX_CACHE = new WeakMap<readonly TermHintInfo[], HintIndex>();
+
+function hintIndexFor(hints: readonly TermHintInfo[]): HintIndex {
+  const cached = HINT_INDEX_CACHE.get(hints);
+  if (cached) return cached;
+  let maxLine = -1;
+  for (const h of hints) if (h.line > maxLine) maxLine = h.line;
+  const start = new Int32Array(maxLine + 2);
+  for (const h of hints) start[h.line + 1]++;
+  for (let i = 1; i < start.length; i++) start[i] += start[i - 1];
+  // Stable bucketing: a line's hints keep their document order, which is the order the serializer
+  // (and therefore the reading eye) puts them in on the line.
+  const cursor = Int32Array.from(start);
+  const sorted = new Array<TermHintInfo>(hints.length);
+  for (const h of hints) sorted[cursor[h.line]++] = h;
+  const index: HintIndex = { hints: sorted, start, maxLine };
+  HINT_INDEX_CACHE.set(hints, index);
+  return index;
+}
 
 // The debugger/finished/error trailing comment. Rendered as an inlay hint at the
 // end of the current term line: Monaco's decoration injected text (`after`) does
@@ -49,20 +101,27 @@ function registerInlayProvider(monaco: MonacoNS): void {
       const st = useStore.getState();
       const hints: MonacoT.languages.InlayHint[] = [];
 
-      // Term inlay hints (toggleable, per-kind).
-      if (st.inlayHintsEnabled) {
-        for (const h of st.termHints) {
-          if (h.line + 1 < range.startLineNumber || h.line + 1 > range.endLineNumber) continue;
-          hints.push({
-            position: { lineNumber: h.line + 1, column: h.character + 1 },
-            label: h.text,
-            kind:
-              h.kind === 'term' || h.kind === 'constant_type'
-                ? monaco.languages.InlayHintKind.Type
-                : monaco.languages.InlayHintKind.Parameter,
-            paddingLeft: false,
-            paddingRight: true,
-          });
+      // Term inlay hints (toggleable, per-kind). Walked through the per-line index and only over
+      // the queried range — the range is the viewport ± one screen (~150 lines), which is what
+      // makes a 200k-node term free to scroll.
+      if (st.inlayHintsEnabled && st.termHints.length > 0) {
+        const idx = hintIndexFor(st.termHints);
+        const first = Math.max(0, range.startLineNumber - 1);
+        const last = Math.min(range.endLineNumber - 1, idx.maxLine);
+        for (let ln = first; ln <= last; ln++) {
+          for (let i = idx.start[ln]; i < idx.start[ln + 1]; i++) {
+            const h = idx.hints[i];
+            hints.push({
+              position: { lineNumber: h.line + 1, column: h.character + 1 },
+              label: h.text,
+              kind:
+                h.kind === 'term' || h.kind === 'constant_type'
+                  ? monaco.languages.InlayHintKind.Type
+                  : monaco.languages.InlayHintKind.Parameter,
+              paddingLeft: false,
+              paddingRight: true,
+            });
+          }
         }
       }
 
@@ -71,9 +130,11 @@ function registerInlayProvider(monaco: MonacoNS): void {
       // animated playback (status 'running') we show only the moving highlight, not a "paused"
       // comment, so the text isn't misleading while it auto-advances.
       const kind = debugHighlightKind(st);
-      const line = kind && st.currentTermId !== undefined ? lineForTermId(st.termLocations, st.currentTermId) : undefined;
+      const line = kind && st.currentTermId !== undefined ? lineForTermId(st.termLocations, st.termView, st.currentTermId) : undefined;
+      let statusLine: number | undefined;
       if (kind && st.status !== 'running' && line !== undefined && line + 1 >= range.startLineNumber && line + 1 <= range.endLineNumber && line + 1 <= model.getLineCount()) {
         const ln = line + 1;
+        statusLine = line;
         hints.push({
           position: { lineNumber: ln, column: model.getLineMaxColumn(ln) },
           label: STATUS_COMMENT[kind],
@@ -81,19 +142,38 @@ function registerInlayProvider(monaco: MonacoNS): void {
         });
       }
 
+      // Per-line costs on hot lines. Last, and told which line the status comment just took: two
+      // trailing comments on one line would be a wall of text exactly where the user is stopped.
+      hints.push(...profileInlayHints(model, range, statusLine));
+
       return { hints, dispose() {} };
     },
   });
 }
 
+// Coalesced to ONE event per commit. Three effects ask for a refresh (the debug highlight, the
+// profiler heat, the inlay toggles) and React runs them back to back, so a bare `.fire()` per call
+// emitted a burst. Monaco's inlay controller debounces and cancels the in-flight request on each
+// event, and a burst could leave the LAST render dropped until some unrelated trigger (a scroll)
+// re-queried — the trailing comment then sat stale for many seconds. Measured: a normal refresh
+// lands in 3–116 ms; the stall was >8 s in roughly one run in eight. One event per microtask
+// removes the burst (and the redundant re-queries with it).
+let inlayFirePending = false;
 function fireInlayChange(): void {
-  inlayChangeEmitter?.fire();
+  if (!inlayChangeEmitter || inlayFirePending) return;
+  inlayFirePending = true;
+  queueMicrotask(() => {
+    inlayFirePending = false;
+    inlayChangeEmitter?.fire();
+  });
 }
 
 // ── Decoration helpers ──────────────────────────────────────────────────────────
 
-function lineForTermId(locs: TermLocation[], termId: number): number | undefined {
-  return locs.find((l) => l.termId === termId)?.startLine;
+/** 0-based start line of a term id, via the memoised index (a linear `.find` here is on the inlay
+ *  provider's path, which Monaco re-queries on every scroll). */
+function lineForTermId(locs: TermLocation[], view: TermView, termId: number): number | undefined {
+  return termIndexFor(locs, view).lineOfTerm(termId);
 }
 
 // Horizontal-reveal heuristic: deep UPLC terms sit far right, but we don't want to re-scroll
@@ -146,12 +226,13 @@ function revealTermLine(
 function breakpointDecos(
   monaco: MonacoNS,
   locs: TermLocation[],
+  view: TermView,
   bps: Breakpoint[],
 ): MonacoT.editor.IModelDeltaDecoration[] {
   const activeLines = new Set<number>();
   const disabledLines = new Set<number>();
   for (const b of bps) {
-    const ln = lineForTermId(locs, b.id);
+    const ln = lineForTermId(locs, view, b.id);
     if (ln === undefined) continue;
     (b.active ? activeLines : disabledLines).add(ln);
   }
@@ -221,7 +302,7 @@ function breakpointStateAtLine(line: number): { possible: boolean; set: boolean 
   const st = useStore.getState();
   const possible = st.termLocations.some((loc) => loc.startLine === line);
   if (!possible) return { possible: false, set: false };
-  const hit = termAtLineForBreakpoint(line, st.termLocations);
+  const hit = termAtLineForBreakpoint(line, st.termLocations, st.termView);
   const set = hit ? st.breakpoints.some((b) => b.id === hit.termId) : false;
   return { possible: true, set };
 }
@@ -233,14 +314,30 @@ export function TermEditor() {
   const bpDecoRef = useRef<MonacoT.editor.IEditorDecorationsCollection>();
   const hlDecoRef = useRef<MonacoT.editor.IEditorDecorationsCollection>();
   const locateDecoRef = useRef<MonacoT.editor.IEditorDecorationsCollection>();
+  // The profiler's two collections, kept apart from the three above so a CEK step never touches
+  // them and a new profile never touches the debug highlights.
+  const laneDecoRef = useRef<MonacoT.editor.IEditorDecorationsCollection>();
+  const rulerDecoRef = useRef<MonacoT.editor.IEditorDecorationsCollection>();
   // 0-based line under the cursor at the last mousedown — drives the right-click
   // breakpoint action so it acts on the clicked line, not the caret.
   const ctxLineRef = useRef<number | undefined>(undefined);
+  // Set once the editor exists: pushes the clicked line into the profile action's context key.
+  const syncProfileCtxRef = useRef<(line: number | undefined) => void>();
+  // Scroll + selection checkpoint, taken when the Script tab is hidden and restored when it returns
+  // (see the visibility effect below).
+  const viewState = useRef<MonacoT.editor.ICodeEditorViewState | null>(null);
   const [ready, setReady] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, col: 1 });
 
+  // Is the Script tab the visible one? `EditorTabs` keeps this editor MOUNTED and hides it with
+  // `display: none`, so the component has to learn about visibility itself — nothing re-renders it
+  // on a tab switch otherwise.
+  const active = useTabsStore((s) => s.activeTabId === TERM_TAB);
   const termText = useStore((s) => s.termText);
   const termLocations = useStore((s) => s.termLocations);
+  // The view decides how a location's line range is read — the two renderers store `endLine`
+  // differently — so every index lookup has to be told which rendering these locations came from.
+  const termView = useStore((s) => s.termView);
   const breakpoints = useStore((s) => s.breakpoints);
   const currentTermId = useStore((s) => s.currentTermId);
   const status = useStore((s) => s.status);
@@ -248,6 +345,16 @@ export function TermEditor() {
   const inlayHintsEnabled = useStore((s) => s.inlayHintsEnabled);
   const revealRequest = useStore((s) => s.revealRequest);
   const stepDelay = useSettings((s) => s.stepDelay);
+  // Profiler state, per field like everything else here: a whole-store subscription would re-run
+  // this component on every inspector pull, and the heat effect below must not be woken by one.
+  const profileIndex = useStore((s) => s.profileIndex);
+  const profileMetric = useStore((s) => s.profileMetric);
+  const profileScope = useStore((s) => s.profileScope);
+  const profileHeat = useStore((s) => s.profileHeat);
+  const profileStale = useStore((s) => s.profileStale);
+  const profileStatus = useStore((s) => s.profileStatus);
+  const profileOutcome = useStore((s) => s.profileOutcome);
+  const profileInlay = useSettings((s) => s.profileInlay);
 
   // Create the editor once (lazy-loads Monaco).
   useEffect(() => {
@@ -275,6 +382,14 @@ export function TermEditor() {
         // the debug/finished/error band's full-line tint + left accent rail.
         renderLineHighlight: 'gutter',
         guides: { indentation: true, highlightActiveIndentation: false },
+        // The `linesDecorations` column is the profiler's cost lane, and it is free only with
+        // folding OFF: the folding chevron renders into the same column with a full-size box, adds
+        // its own 16px and swallows every mousedown right of x = 4. Nothing to fold in a read-only
+        // viewer anyway, and it saves the indent-range provider walking 41k indents.
+        folding: false,
+        // Fixed for the editor's whole life — never `updateOptions`ed when a profile arrives or is
+        // cleared, so the program text does not shift sideways under the user.
+        lineDecorationsWidth: 16,
         padding: { top: 8, bottom: 8 },
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
         fontSize: 12.5,
@@ -284,6 +399,9 @@ export function TermEditor() {
       bpDecoRef.current = editor.createDecorationsCollection();
       hlDecoRef.current = editor.createDecorationsCollection();
       locateDecoRef.current = editor.createDecorationsCollection();
+      laneDecoRef.current = editor.createDecorationsCollection();
+      rulerDecoRef.current = editor.createDecorationsCollection();
+      syncProfileCtxRef.current = registerProfileActions(monaco, editor, () => ctxLineRef.current);
 
       // Tab-bar search button → open Monaco's find widget (cleared on dispose).
       setTermFindHandler(() => { editorRef.current?.getAction('actions.find')?.run(); editorRef.current?.focus(); });
@@ -322,17 +440,34 @@ export function TermEditor() {
         const { possible, set } = line !== undefined ? breakpointStateAtLine(line) : { possible: false, set: false };
         bpPossibleCtx.set(possible);
         bpSetCtx.set(set);
+        syncProfileCtxRef.current?.(line);
         if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN && line !== undefined) {
           useStore.getState().toggleBreakpointAtLine(line);
         }
+        // A click on the cost lane is "Show in profile" — its own hit-target, distinct from the
+        // glyph margin above, and reachable at all only because folding is off.
+        if (e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_DECORATIONS && line !== undefined) {
+          showInProfile(line);
+        }
       });
-      // F9 → toggle breakpoint at cursor; Ctrl/Cmd+Alt+H → toggle inlay hints. (Editor-focus scoped.)
-      editor.addCommand(monaco.KeyCode.F9, () => {
-        const ln = editorRef.current?.getPosition()?.lineNumber;
-        if (ln) useStore.getState().toggleBreakpointAtLine(ln - 1);
+      // F9 → toggle breakpoint at cursor; Ctrl/Cmd+Alt+H → toggle inlay hints. `addAction`, not
+      // `addCommand`: the standalone keybinding service is a page-wide singleton, so an
+      // `addCommand` binding fires in every Monaco on the page — these two were reaching the
+      // Script Context viewer, where F9 and Alt+H mean nothing.
+      editor.addAction({
+        id: 'uplc.toggleBreakpointAtCursor',
+        label: 'Toggle Breakpoint',
+        keybindings: [monaco.KeyCode.F9],
+        run: (ed) => {
+          const ln = ed.getPosition()?.lineNumber;
+          if (ln) useStore.getState().toggleBreakpointAtLine(ln - 1);
+        },
       });
-      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyH, () => {
-        useStore.getState().toggleInlayHints();
+      editor.addAction({
+        id: 'uplc.toggleInlayHints',
+        label: 'Toggle Inline Hints',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyH],
+        run: () => useStore.getState().toggleInlayHints(),
       });
 
       setReady(true);
@@ -347,6 +482,23 @@ export function TermEditor() {
     };
   }, []);
 
+  // Became visible / hidden. The Script tab is hidden with `display: none`, never unmounted, so
+  // Monaco comes back with the layout it had when it was measured — which, coming out of
+  // `display: none`, is a zero-height one for a frame: `automaticLayout`'s ResizeObserver fires on
+  // the NEXT frame, and that frame is the flash. The explicit `layout()` removes it. The view state
+  // is checkpointed on the way out and restored on the way back, because the model survives the
+  // round trip but the scroll position is not part of the model.
+  useEffect(() => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    if (active) {
+      ed.layout();
+      if (viewState.current) ed.restoreViewState(viewState.current);
+    } else {
+      viewState.current = ed.saveViewState();
+    }
+  }, [active, ready]);
+
   // Term text changed (new session) → replace model contents.
   useEffect(() => {
     if (!ready) return;
@@ -359,14 +511,14 @@ export function TermEditor() {
   // Breakpoint glyphs depend on locations + breakpoints (+ termText reset).
   useEffect(() => {
     if (!ready || !monacoRef.current || !bpDecoRef.current) return;
-    bpDecoRef.current.set(breakpointDecos(monacoRef.current, termLocations, breakpoints));
+    bpDecoRef.current.set(breakpointDecos(monacoRef.current, termLocations, termView, breakpoints));
   }, [ready, termText, termLocations, breakpoints]);
 
   // Debugger / finished / error line highlight + reveal, driven by currentTermId + state.
   useEffect(() => {
     if (!ready || !monacoRef.current || !editorRef.current || !hlDecoRef.current) return;
     const model = editorRef.current.getModel();
-    const line = currentTermId !== undefined ? lineForTermId(termLocations, currentTermId) : undefined;
+    const line = currentTermId !== undefined ? lineForTermId(termLocations, termView, currentTermId) : undefined;
     // Slow playback (status 'running' + stepDelay) shows the moving debugger highlight too.
     const kind: HighlightKind | undefined =
       finalStatus === 'Done' ? 'finished' : finalStatus === 'Error' ? 'error'
@@ -383,11 +535,38 @@ export function TermEditor() {
     revealTermLine(monacoRef.current, editorRef.current, model, line, true);
   }, [ready, currentTermId, status, finalStatus, termLocations, stepDelay]);
 
-  // Inlay UI toggles → ask Monaco to re-query the provider.
+  // Profiler heat: the cost lane + the overview-ruler marks, in their OWN effect.
+  //
+  // The deps are the whole point. It must not be folded into the breakpoint or the highlight
+  // effect above — those re-run on every CEK step, and this one sets up to 4 000 decorations. It reads
+  // the DERIVED `profileIndex`, never `profile`, so a step, a scroll or a scope toggle cannot wake
+  // it; `setTermView` writes `termText`, `termLocations` and `profileIndex` in one `set()`, so a
+  // render can never see a new text against an old index. `profileScope` and the theme are absent
+  // on purpose: the scope only reorders the inlay pair (below), and the ruler's colours are
+  // `ThemeColor` ids that Monaco re-resolves itself.
+  //
+  // `profileHeat: false` and `profileStale` both land as `undefined` here, which clears BOTH
+  // collections and (via the provider) the cost hints — and leaves the report, the outcome pill
+  // and the hot-list navigation untouched.
+  useEffect(() => {
+    if (!ready || !monacoRef.current || !editorRef.current || !laneDecoRef.current || !rulerDecoRef.current) return;
+    applyProfileHeat(
+      monacoRef.current,
+      editorRef.current,
+      laneDecoRef.current,
+      rulerDecoRef.current,
+      profileHeat && !profileStale ? profileIndex : undefined,
+    );
+    fireInlayChange(); // the cost hints ride the provider, so they follow in the same beat
+  }, [ready, termText, termLocations, profileIndex, profileMetric, profileHeat, profileStale]);
+
+  // Inlay UI toggles → ask Monaco to re-query the provider. `profileScope` is here and not in the
+  // heat effect: it flips the order of the pair in the cost hint and nothing else, so the lane
+  // decorations must NOT be rebuilt for it.
   useEffect(() => {
     if (!ready) return;
     fireInlayChange();
-  }, [ready, inlayHintsEnabled]);
+  }, [ready, inlayHintsEnabled, profileInlay, profileScope]);
 
   // "Reveal in editor" request from an inspector tree row: scroll the term's line into view,
   // move the caret there, and flash a transient highlight (cleared after the flash). The nonce
@@ -397,7 +576,7 @@ export function TermEditor() {
     if (!ready || !revealRequest || !monacoRef.current || !editorRef.current || !locateDecoRef.current) return;
     const editor = editorRef.current;
     const model = editor.getModel();
-    const line = lineForTermId(termLocations, revealRequest.termId);
+    const line = lineForTermId(termLocations, termView, revealRequest.termId);
     if (!model || line === undefined || line + 1 > model.getLineCount()) return;
     const ln = line + 1;
     // Explicit reveal → center the term both vertically and horizontally, then drop the caret
@@ -413,22 +592,78 @@ export function TermEditor() {
 
   // Current debug term line (distinct from the caret Ln/Col) — shown in the status bar while
   // paused/finished/error so the readout doesn't contradict the highlighted line.
-  const dbgLine = currentTermId !== undefined ? lineForTermId(termLocations, currentTermId) : undefined;
+  const dbgLine = currentTermId !== undefined ? lineForTermId(termLocations, termView, currentTermId) : undefined;
   const dbgState = finalStatus === 'Done' ? { label: 'finished', cls: 'sb-done' }
     : finalStatus === 'Error' ? { label: 'error', cls: 'sb-error' }
       : status === 'pause' ? { label: 'paused', cls: 'sb-paused' }
         : (status === 'running' && stepDelay > 0) ? { label: 'running', cls: 'sb-paused' }
           : undefined;
 
+  // Where the caret sits in the hot list. Counted on `hotLines` (bucket ≥ 3) — the very list F8
+  // walks — so the key and the readout can never disagree about the denominator. It survives
+  // `profileHeat: false`: the term's markup is off, the profile is not.
+  const hot = profileIndex && !profileStale ? hotStatus(profileIndex, cursor.line - 1) : undefined;
+  // A live profile for THIS term — what the status-bar hint announces the profiler keys on. Wider
+  // than `hot`, which is empty when nothing reaches 1% while the keys still work.
+  const hasProfile = !!profileIndex && !profileStale;
+  // The lane cap is a fact about what is on screen, so it is stated on screen, not only in the plan.
+  const capped = !!profileIndex && profileHeat && !profileStale && profileIndex.ranked.length > LANE_CAP;
+  const outcome = profileOutcomeNote(profileOutcome, profileStatus, !!profileIndex, profileStale);
+
   return (
     <div className="term-pane">
       <div className="term-editor-wrap">
         <div ref={containerRef} className="term-editor" data-testid="term-editor" />
-        {!termText && <div className="term-editor-empty">Select a redeemer to view the term</div>}
+        {/* An OVERLAY, not a replacement: every load sets `termText: undefined` before the new term
+            arrives, and swapping the editor out for a placeholder would dispose the editor, the
+            model and all five decoration collections and pay a full `editor.create` plus a TextMate
+            tokenisation of 41k lines on the way back. */}
+        {!termText && (
+          <div className="term-editor-empty">
+            <EmptyState
+              icon="symbol-structure"
+              title="No term to show"
+              hint="Load a transaction and select a redeemer, or open a plain UPLC program."
+            />
+          </div>
+        )}
       </div>
       <div className="editor-statusbar">
-        <span className="sb-hint">Click the gutter or press F9 to toggle a breakpoint · Ctrl/Cmd+Alt+H toggles inline hints</span>
+        {/* The keys worth advertising inline; the rest live in the title and in
+            the shortcuts toast (`?` in the title bar). The profiler half appears with a profile for
+            THIS term — F8 and Ctrl/Cmd+Alt+P are live either way (they answer with a toast), but
+            announcing them with nothing to navigate is noise. It is NOT gated on `hot`: a profile
+            whose hottest line sits below 1% has an empty hot list and working keys. */}
+        <span
+          className="sb-hint"
+          title={'F9 — toggle a breakpoint at the cursor · Ctrl/Cmd+F — find in the term · '
+            + 'Ctrl/Cmd+Alt+H — inline term hints · Ctrl/Cmd+Alt+U — inline costs · '
+            + 'F8 / Shift+F8 — next / previous hot node · Ctrl/Cmd+Alt+P — heat map'}
+        >
+          F9 breakpoint
+          {hasProfile && ' · F8 next hot node · Ctrl/Cmd+Alt+P heat'}
+        </span>
         <span className="sb-spacer" />
+        {capped && (
+          <span className="sb-item" title="The lane paints the hottest lines only; overview-ruler marks are merged into pixel slots, so one mark stands for many lines.">
+            {LANE_CAP_NOTE}
+          </span>
+        )}
+        {outcome && (
+          // Third copy of the outcome, by design: the numbers behind the heat lane are partial
+          // whenever this is here, and a surface that shows the heat without the caveat implies a
+          // complete run.
+          <span className={`sb-item ${outcome.error ? 'sb-error' : ''}`} title={outcome.title}>{outcome.text}</span>
+        )}
+        {hot && (
+          <button
+            className="sb-item sb-item-btn sb-hot"
+            title={`Next hot node (F8) · Previous hot node (Shift+F8) — click to jump to the hottest of ${hot.count}`}
+            onClick={() => editorRef.current && gotoLine(editorRef.current, hot.topLine)}
+          >
+            <Codicon name="flame" /> {hot.label}
+          </button>
+        )}
         {dbgState && (
           // When execution ended on a real source term (dbgLine set), name it and re-reveal on
           // click. A run that reduced to a bare constant has no source position — still show the

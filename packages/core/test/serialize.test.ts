@@ -17,11 +17,13 @@ describe('serializeTerm', () => {
     expect(out.text).toBe(['Apply {', '  fun: Built-in addInteger,', '  arg: Const Integer: "42"', '}'].join('\n'));
   });
 
-  it('records a location per term with correct line ranges', () => {
+  it('records a location per term with correct line ranges, kind and label', () => {
+    // endLine is EXCLUSIVE here (`TermIndex` normalises it); `kind`/`label` are the profiler's
+    // `Node` column, filled at the push site because the rendered line cannot supply them.
     expect(out.locations).toEqual([
-      { startLine: 0, endLine: 4, termId: 3 },
-      { startLine: 1, endLine: 2, termId: 1 },
-      { startLine: 2, endLine: 3, termId: 2 },
+      { startLine: 0, endLine: 4, termId: 3, kind: 'Apply' },
+      { startLine: 1, endLine: 2, termId: 1, kind: 'Builtin', label: 'addInteger' },
+      { startLine: 2, endLine: 3, termId: 2, kind: 'Constant' },
     ]);
   });
 
@@ -64,11 +66,11 @@ describe('line↔termId mapping', () => {
     expect(findTermAtLine(2, locations)?.termId).toBe(2);
   });
 
-  it('findTermAtLine on the closing brace maps to the most-nested overlapping term', () => {
-    // Faithful quirk of the original: endLine is "one past" and inclusive in
-    // findTermAtLine, so the closing '}' on line 3 still falls inside the
-    // constant's [2,3] range (range 1) which is more nested than Apply's [0,4].
-    expect(findTermAtLine(3, locations)?.termId).toBe(2);
+  it('findTermAtLine maps a closing brace to the term it closes', () => {
+    // The tree serializer's endLine is EXCLUSIVE, so comparing it with `<=` used to stretch every
+    // range one line down and the closing '}' on line 3 answered `Constant` — the node that ended
+    // on line 2. `TermIndex` normalises the range to [0,3] / [2,2] and the brace is Apply's.
+    expect(findTermAtLine(3, locations)?.termId).toBe(3);
   });
 
   it('findNearestTerm snaps an out-of-range line to the closest term', () => {

@@ -74,9 +74,11 @@ export function App() {
     }
   };
 
+  // Every key the term editor binds, in one place — this toast is the only surface that names them
+  // all, so a key missing here is a key nobody finds.
   const showShortcuts = () =>
     toast.info('Keyboard shortcuts', {
-      description: 'F9 — toggle breakpoint at the cursor · Ctrl/Cmd+Alt+H — toggle inline hints · Ctrl/Cmd+F — find in term',
+      description: 'F9 — toggle breakpoint at the cursor · Ctrl/Cmd+Alt+H — toggle inline hints · Ctrl/Cmd+F — find in term · F8 / Shift+F8 — next / previous hot node · Ctrl/Cmd+Alt+P — toggle the heat map · Ctrl/Cmd+Alt+U — toggle the inline costs',
     });
 
   const resolved = resolveTheme(theme);

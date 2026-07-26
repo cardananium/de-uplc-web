@@ -8,7 +8,7 @@ rustflags = [
     # "-C", "link-args=-z max-memory=1073741824"
 ]
 
-# NOTE (M0 spike, 2026-06-02): build-std is NOT required for the web target.
+# build-std is NOT required for the web target.
 # The prebuilt std for wasm32-unknown-unknown is sufficient, so the crate builds
 # on STABLE Rust (verified: release build, blst linked, runs in Node + Chrome).
 # Removing the [unstable] build-std block lets CI run on stable (no nightly /

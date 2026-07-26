@@ -8,7 +8,10 @@ import type { Term } from '../src/debugger-types';
 // multi-line nested-constant re-indent path. The text snapshot is unchanged
 // from the pre-refactor serializer; the locations snapshot reflects the fixed
 // Constr header count (3 lines, not 2 — terms inside/after a Constr used to
-// report lines one above where they render).
+// report lines one above where they render) and now also carries each node's
+// `kind`/`label` — the profiler's `Node` column, which cannot be read back out
+// of the rendered line. `endLine` here is still the raw EXCLUSIVE one; only
+// `TermIndex` normalises it.
 
 // Lambda → Case → Apply → {Delay→Force→Var, Constr→[Builtin, Error]} ; branches [Var, Error]
 const branchy: Term = {
@@ -78,56 +81,78 @@ describe('serializeTerm — branch coverage (byte-exact lock)', () => {
       [
         {
           "endLine": 22,
+          "kind": "Lambda",
+          "label": "x",
           "startLine": 0,
           "termId": 1,
         },
         {
           "endLine": 21,
+          "kind": "Case",
+          "label": undefined,
           "startLine": 1,
           "termId": 2,
         },
         {
           "endLine": 16,
+          "kind": "Apply",
+          "label": undefined,
           "startLine": 2,
           "termId": 3,
         },
         {
           "endLine": 8,
+          "kind": "Delay",
+          "label": undefined,
           "startLine": 3,
           "termId": 4,
         },
         {
           "endLine": 7,
+          "kind": "Force",
+          "label": undefined,
           "startLine": 4,
           "termId": 5,
         },
         {
           "endLine": 6,
+          "kind": "Var",
+          "label": "y",
           "startLine": 5,
           "termId": 6,
         },
         {
           "endLine": 15,
+          "kind": "Constr",
+          "label": undefined,
           "startLine": 8,
           "termId": 7,
         },
         {
           "endLine": 12,
+          "kind": "Builtin",
+          "label": "addInteger",
           "startLine": 11,
           "termId": 8,
         },
         {
           "endLine": 13,
+          "kind": "Error",
+          "label": undefined,
           "startLine": 12,
           "termId": 9,
         },
         {
           "endLine": 18,
+          "kind": "Var",
+          "label": "z",
           "startLine": 17,
           "termId": 10,
         },
         {
           "endLine": 19,
+          "kind": "Error",
+          "label": undefined,
           "startLine": 18,
           "termId": 11,
         },
@@ -152,7 +177,7 @@ describe('serializeTerm — branch coverage (byte-exact lock)', () => {
       '}',
     ]);
     // The Var after the constant maps to the line it actually renders on.
-    expect(out.locations).toContainEqual({ startLine: 2, endLine: 3, termId: 2 });
+    expect(out.locations).toContainEqual({ startLine: 2, endLine: 3, termId: 2, kind: 'Var', label: 'x' });
   });
 
   it('id: hint sits right after the term type — never inside/after the value', () => {

@@ -287,6 +287,23 @@ export class WasmEngineHostRunner implements IDebuggerEngineRuntime, IDebuggerEn
     }
   }
 
+  // --- profiler (typed pass-through; the chunk loop lives in the host store) --
+
+  profileStart(): Promise<void> {
+    return this.api.profileStart();
+  }
+
+  /** One chunk, at most `maxSteps` steps. The whole-run step cap and the cancel flag belong to the
+   *  store: this call knows nothing but its own chunk, and `Running` means "not finished yet". */
+  profileRun(maxSteps: number): Promise<DebuggerTypes.ProfileRunResult> {
+    return this.api.profileRun(maxSteps);
+  }
+
+  /** The full profile, decoded HERE — the store never sees bytes. */
+  async profileReport(): Promise<DebuggerTypes.Profile> {
+    return decodeJson<DebuggerTypes.Profile>(await this.api.profileReport());
+  }
+
   // --- extras ----------------------------------------------------------------
 
   /** Reference-script bytes from tx CBOR via the single WASM instance (core's RefScriptResolver). */

@@ -12,11 +12,12 @@ describe('serializeTermUplc — canonical UPLC rendering', () => {
     const { text, locations, hints } = serializeTermUplc(term);
     expect(text).toBe(['[', '  (builtin verifySignature)', '  (con integer 42)', ']'].join('\n'));
     expect(hints).toEqual([]);
-    // Apply spans the whole thing; children sit on their own lines.
+    // Apply spans the whole thing (endLine INCLUSIVE here, unlike the tree serializer); children
+    // sit on their own lines. `label` is the canonical builtin name in BOTH renderings.
     expect(locations).toEqual([
-      { startLine: 0, endLine: 3, termId: 1 },
-      { startLine: 1, endLine: 1, termId: 2 },
-      { startLine: 2, endLine: 2, termId: 3 },
+      { startLine: 0, endLine: 3, termId: 1, kind: 'Apply' },
+      { startLine: 1, endLine: 1, termId: 2, kind: 'Builtin', label: 'verifySignature' },
+      { startLine: 2, endLine: 2, termId: 3, kind: 'Constant' },
     ]);
   });
 

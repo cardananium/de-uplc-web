@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useSettings, type ThemePref, type TermView } from '../platform/settings';
+import { useSettings, type ThemePref, type TermView, type ProfileMetric, type ProfileScope } from '../platform/settings';
 import { useStore } from '../store';
 import { Codicon } from '../components/Codicon';
 import { NumberField } from '../components/NumberField';
@@ -11,6 +11,15 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const toggleInlay = useStore((st) => st.toggleInlayHints);
   const termView = useStore((st) => st.termView);
   const setTermView = useStore((st) => st.setTermView);
+  // The three live profiler toggles are store fields dual-written into settings, so they must be
+  // driven through the store here too — writing `useSettings` directly would leave the sidebar and
+  // the report showing the old value until the next reload.
+  const profileMetric = useStore((st) => st.profileMetric);
+  const setProfileMetric = useStore((st) => st.setProfileMetric);
+  const profileScope = useStore((st) => st.profileScope);
+  const setProfileScope = useStore((st) => st.setProfileScope);
+  const profileHeat = useStore((st) => st.profileHeat);
+  const toggleProfileHeat = useStore((st) => st.toggleProfileHeat);
 
   const dialogRef = useRef<HTMLDivElement>(null);
   // Focus management: focus the dialog on open, trap Tab inside it, restore focus on close.
@@ -77,6 +86,49 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
             <NumberField id="set-stepdelay" value={s.stepDelay} min={0} max={5000} step={50} width={90}
               onCommit={(n) => s.set('stepDelay', n)} />
             <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>pause between machine steps on Run (0 = full speed)</span>
+          </div>
+
+          <div className="settings-section">Profiler</div>
+
+          <label htmlFor="set-prof-metric">Default metric</label>
+          <select id="set-prof-metric" value={profileMetric} onChange={(e) => setProfileMetric(e.target.value as ProfileMetric)}>
+            <option value="cpu">CPU</option>
+            <option value="mem">Memory</option>
+          </select>
+
+          <label htmlFor="set-prof-scope">Default cost scope</label>
+          <div>
+            <select id="set-prof-scope" value={profileScope} onChange={(e) => setProfileScope(e.target.value as ProfileScope)}>
+              <option value="self">Self</option>
+              <option value="subtree">Subtree</option>
+            </select>
+            <div className="setting-hint">Self is what you can act on directly; Subtree shows the region it sits in.</div>
+          </div>
+
+          <label htmlFor="set-prof-heat">Heat map in the term editor</label>
+          <div>
+            <input id="set-prof-heat" type="checkbox" checked={profileHeat} onChange={toggleProfileHeat} />
+            <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>cost lane beside the line numbers · also Ctrl/Cmd+Alt+P</span>
+          </div>
+
+          <label htmlFor="set-prof-inlay">Inline costs at line ends</label>
+          <div>
+            <input id="set-prof-inlay" type="checkbox" checked={s.profileInlay} onChange={(e) => s.set('profileInlay', e.target.checked)} />
+            <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>self · subtree · hits, on the hottest lines</span>
+          </div>
+
+          <label htmlFor="set-prof-minshare">Hide nodes below (% of run)</label>
+          <div>
+            <NumberField id="set-prof-minshare" value={s.profileMinShare} min={0} max={100} step={0.05} width={90}
+              onCommit={(n) => s.set('profileMinShare', n)} />
+            <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>report table only (0 = show everything)</span>
+          </div>
+
+          <label htmlFor="set-prof-maxsteps">Step cap</label>
+          <div>
+            <NumberField id="set-prof-maxsteps" value={s.profileMaxSteps} min={100_000} step={1_000_000} width={130}
+              onCommit={(n) => s.set('profileMaxSteps', n)} />
+            <div className="setting-hint">A profile that reaches this cap stops and is reported as partial (Limit). You can continue it.</div>
           </div>
 
           <div className="settings-section">Koios provider</div>

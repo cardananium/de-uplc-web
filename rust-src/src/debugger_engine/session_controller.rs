@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::budget::SerializableBudget;
 use crate::debugger_engine::{DebuggerError, lazy_session_api::LazySessionApi};
+use crate::profile::{ProfileAttribution, ProfileRunner};
 use crate::wasm_tools::JsError;
 use crate::{SerializableEnv, SerializableExecutionStatus, SerializableMachineContext, SerializableMachineState, SerializableScriptContext, SerializableTerm};
 use pallas_primitives::conway::Language;
@@ -40,6 +41,10 @@ pub struct SessionController {
     cost_model: CostModel,
     term_ids: HashSet<i32>,
     version: u64,
+    // The profile run lives on its OWN machine (see profile.rs), so it survives stepping the debug
+    // session but NOT reset(): reset rebuilds `machine`, and a runner left over from the machine
+    // that no longer exists would report a profile of a session the user has since restarted.
+    profile_runner: Option<Box<ProfileRunner>>,
 }
 
 #[wasm_bindgen]
@@ -86,6 +91,7 @@ impl SessionController {
             cost_model,
             term_ids,
             version: 0,
+            profile_runner: None,
         })
     }
 
@@ -290,6 +296,77 @@ impl SessionController {
             .map_err(|e| DebuggerError::MachineError(e.to_string()))?)
     }
 
+    /// Creates (or restarts) the profile runner: a SECOND machine over the same entry term, cost
+    /// model and language. The debug session's machine, its position and its trace buffer are not
+    /// touched — which is why profiling is allowed while the session is paused.
+    ///
+    /// Runs under v2 attribution: a Return step is charged to the apply site it returns into,
+    /// not to whatever node happened to execute last. v1 stays constructible — `tests.rs` profiles
+    /// the same program under both rules — but it is not what a session reports.
+    pub fn profile_start(&mut self) -> Result<(), JsError> {
+        self.profile_runner = Some(Box::new(ProfileRunner::new(
+            self.language.clone(),
+            self.cost_model.clone(),
+            &self.entry_term,
+            &self.term_ids,
+            ProfileAttribution::ApplySite,
+        )?));
+        Ok(())
+    }
+
+    /// Runs one chunk of the profile, at most `max_steps` steps. `max_steps` bounds the CHUNK, not
+    /// the run: exhausting it on an unfinished program returns `Running`, and the cap on the whole
+    /// run (plus cancellation) is the host's — the engine never emits `Limit` or `Cancelled`.
+    pub fn profile_run(&mut self, max_steps: u32) -> Result<String, JsError> {
+        let runner = self.profile_runner.as_mut().ok_or_else(|| {
+            DebuggerError::MachineError("No profile run in progress: call profile_start() first.".to_string())
+        })?;
+        let result = runner.run_chunk(max_steps);
+        Ok(serde_json::to_string(&result)
+            .map_err(|e| DebuggerError::MachineError(e.to_string()))?)
+    }
+
+    /// The full profile of whatever has run so far. Valid mid-run (`outcome: Running`) and after a
+    /// script failure (`outcome: Error`) — a partial profile is still a truthful one.
+    pub fn profile_report(&self) -> Result<String, JsError> {
+        let runner = self.profile_runner.as_ref().ok_or_else(|| {
+            DebuggerError::MachineError("No profile to report: call profile_start() first.".to_string())
+        })?;
+        // Declared ExUnits exist only when this session came from a redeemer; without one there is
+        // no declared limit at all, and a percentage of ExBudget::default() would be a made-up
+        // denominator.
+        let (cpu_limit, mem_limit) = if self.redeemer.is_empty() {
+            (None, None)
+        } else {
+            (Some(self.real_budget.cpu), Some(self.real_budget.mem))
+        };
+        let report = runner.report(&self.entry_term, cpu_limit, mem_limit);
+        // Serialise into a PRE-SIZED buffer rather than `to_string`. A `String` that grows by
+        // doubling reaches its final size having also allocated ~2x it in abandoned buffers, and the
+        // report is the largest single allocation the profiler makes: measured on a 262k-node term
+        // (29.7 MB of JSON) the engine heap went 44 MB → 125 MB across this one call. One row is
+        // ~118 bytes of JSON; reserving that up front turns the growth into a single allocation.
+        let mut buf = Vec::with_capacity(report.terms.len() * 128 + 64 * 1024);
+        serde_json::to_writer(&mut buf, &report)
+            .map_err(|e| DebuggerError::MachineError(e.to_string()))?;
+        Ok(String::from_utf8(buf)
+            .map_err(|e| DebuggerError::MachineError(e.to_string()))?)
+    }
+
+    /// The profile runner, for the invariant tests (they check our step accounting against the
+    /// machine's own `spend_counter`).
+    #[cfg(test)]
+    pub(crate) fn profile_runner(&self) -> Option<&ProfileRunner> {
+        self.profile_runner.as_deref()
+    }
+
+    /// The parsed program, for the subtree test: `total == self + Σ children.total` is a statement
+    /// about the AST, and the report alone carries no structure to check it against.
+    #[cfg(test)]
+    pub(crate) fn entry_term(&self) -> &Term<NamedDeBruijn> {
+        &self.entry_term
+    }
+
     /// Resets the session program back to its initial state
     pub fn reset(&mut self) -> Result<(), JsError> {
         self.version += 1;
@@ -308,9 +385,14 @@ impl SessionController {
 
         // Replace the current machine with the new one
         self.machine = Box::new(new_machine);
-        
+
         // Clear any last error
         self.last_error = None;
+
+        // Drop the profile runner with it: Start / Restart / Stop all land here, and a runner that
+        // outlived the machine it was started next to would answer profile_report() for a session
+        // that no longer exists. The host reads this as "Continue profiling is no longer possible".
+        self.profile_runner = None;
 
         Ok(())
     }

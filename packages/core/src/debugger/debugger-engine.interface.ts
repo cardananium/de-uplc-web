@@ -1,7 +1,8 @@
 import { Budget, DebuggerContext, UtxoReference } from "../common";
 import {
     Term, ScriptContext,
-    MachineContextLazy, MachineStateLazy, EnvLazy, ValueLazy
+    MachineContextLazy, MachineStateLazy, EnvLazy, ValueLazy,
+    Profile, ProfileRunResult
 } from "../debugger-types";
 
 /**
@@ -60,4 +61,18 @@ export interface IDebuggerEngine {
     setBreakpointsList(breakpoints: number[]): Promise<void>;
     /** Throttle the run loop: ms to pause between CEK steps (0 = full speed). Set before start/continue. */
     setStepDelay(ms: number): void;
+
+    // Profiler. A profile run is a SECOND machine built from the same entry term, so it never
+    // touches the debug session's machine, budget, logs or current step. The chunk loop lives in
+    // the host store (it owns the cancel flag and the whole-run step cap); the engine only knows
+    // about one chunk at a time. `SessionController::reset()` — every Start/Restart/Stop — drops
+    // the runner, so `profileRun` after that is invalid without a fresh `profileStart`.
+    /** Create (or restart) the profile runner for the current session's entry term. */
+    profileStart(): Promise<void>;
+    /** Run at most `maxSteps` steps of the profile. `maxSteps` bounds the CHUNK, not the run:
+     *  `outcome: 'Running'` means the program has not finished yet. steps/cpu/mem are cumulative
+     *  since `profileStart()`. */
+    profileRun(maxSteps: number): Promise<ProfileRunResult>;
+    /** The full profile of whatever has run so far — valid mid-run and after a script failure. */
+    profileReport(): Promise<Profile>;
 }

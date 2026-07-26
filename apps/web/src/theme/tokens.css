@@ -44,6 +44,31 @@
   --dbg-restart: #6e7781;
   --dbg-step: #4f6bed;
 
+  /* Profiler accent. NOT an alias of any existing token: the obvious candidate --node-runtime
+     (#bc4c00) sits ΔE00 ≈ 3 — one JND — from the heat ramp's own bucket 2, so the profiler's accent
+     would have been indistinguishable from part of its scale. The --prof-heat-* ramp itself is
+     GENERATED into this file from apps/web/src/profile/heat.ts (npm run gen:heat). */
+  --dbg-profile: #8b2f88;      /* 7.34:1 — ΔE00 23.6 from the nearest --dbg-* */
+  --badge-profile-fg: #7a2977; /* 5.87:1 on the 16% badge tint over --bg */
+
+  /* ── profiler heat ──────────────────────────────────────────────────────────────────────
+     One monotonic-in-lightness ramp (light: hotter = darker), off the red/green axis and off the
+     semantic blue. The two ratios are WCAG 2.x against the REAL editor background (monaco.ts
+     THEME_COLORS) and against the CARET LINE composite: renderLineHighlight: 'gutter' paints the
+     current-line highlight ACROSS the margin, so on that one line the lane sits on
+     editor.lineHighlightBackground, not on editor.background. Colour ORDERS the buckets under any
+     vision model; the lane's width (4 → 14px, term-editor.css) IDENTIFIES them.
+     The six values below are GENERATED from apps/web/src/profile/heat.ts by `npm run gen:heat` —
+     hand edits are overwritten by the generator and fail heat.test.ts. */
+  /* gen:heat light */
+  --prof-heat-0: #968800; /* 3.61:1 / 3.34:1 */
+  --prof-heat-1: #c14573; /* 4.81:1 / 4.45:1   step +33% */
+  --prof-heat-2: #913f76; /* 6.61:1 / 6.12:1   step +37% */
+  --prof-heat-3: #6f2b89; /* 8.81:1 / 8.16:1   step +33% */
+  --prof-heat-4: #231f96; /* 12.30:1 / 11.38:1  step +40% */
+  --prof-heat-5: #0f1d42; /* 16.47:1 / 15.24:1  step +34% */
+  /* end gen:heat */
+
   /* node-tree icon tints, by LazyRef kind */
   --node-state: #9a6700;
   --node-context: #8250df;
@@ -95,6 +120,20 @@
   --dbg-stop: #ff6b71;
   --dbg-restart: #9aa7b5;
   --dbg-step: #7c9cff;
+
+  --dbg-profile: #e79ad0;      /* 8.95:1 on the editor bg, 7.66:1 on --surface-2 */
+  --badge-profile-fg: var(--dbg-profile);
+
+  /* Dark half of the heat ramp — hotter = LIGHTER, same hue arc, ratios against #0c1119 and the
+     caret-line composite #151921. GENERATED, see the light block above. */
+  /* gen:heat dark */
+  --prof-heat-0: #806a1b; /* 3.60:1 / 3.35:1 */
+  --prof-heat-1: #c85d84; /* 4.82:1 / 4.49:1   step +34% */
+  --prof-heat-2: #f665a6; /* 6.61:1 / 6.15:1   step +37% */
+  --prof-heat-3: #e29eca; /* 8.99:1 / 8.36:1   step +36% */
+  --prof-heat-4: #d7c5ff; /* 12.00:1 / 11.17:1  step +34% */
+  --prof-heat-5: #efe4fe; /* 15.50:1 / 14.42:1  step +29% */
+  /* end gen:heat */
 
   --node-state: #f5c46b;
   --node-context: #c792ea;
@@ -224,8 +263,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 .panel-divider + .mc-section { margin-top: 0; }
 .mc-section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--fg-muted); margin-bottom: 8px; }
 .mc-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-/* Debug transport toolbar (pill group) + status badge in the titlebar. */
-.transport-bar { display: flex; align-items: center; gap: 10px; }
+/* Debug transport toolbar (pill group) + status badge in the titlebar. `flex-shrink: 0` because
+   .app-titlebar is `overflow-x: auto` on purpose ("let the action cluster scroll rather than clip"):
+   without it the bar and its .icon-box children compress and, since .icon-box has
+   `overflow: hidden`, they CLIP their buttons before the titlebar ever starts scrolling — which
+   would take Cancel away exactly when it is needed. */
+.transport-bar { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 /* key/value rows (script hash, language) — label column auto-sizes, value wraps. */
 .mc-kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: baseline; margin: 12px 0 0; font-size: 12.5px; }
 .mc-kv dt { color: var(--fg-muted); }
@@ -245,10 +288,18 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 .status-badge.tone-paused  { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--badge-paused-fg); }
 .status-badge.tone-done    { background: color-mix(in srgb, var(--accent-green) 16%, transparent); color: var(--badge-done-fg); }
 .status-badge.tone-error   { background: color-mix(in srgb, var(--error-fg) 16%, transparent); color: var(--badge-error-fg); }
+/* Profiling runs ALONGSIDE the session state, so it is a second pill, never a recolouring of the
+   first: the debug session really is still Ready/Paused and its badge may not say otherwise. */
+.status-badge.tone-profile { background: color-mix(in srgb, var(--dbg-profile) 16%, transparent); color: var(--badge-profile-fg); }
 .status-meta { color: var(--fg-dim); font-size: 11.5px; white-space: nowrap; }
 
+/* Narrow titlebar: the pill drops its word and keeps the number. */
+@media (max-width: 900px) {
+  .status-badge.tone-profile .pill-word { display: none; }
+}
+
 /* ── transport pill (icon group) ── */
-.icon-box { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }
+.icon-box { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-2); flex-shrink: 0; }
 .icon-button {
   background: transparent; border: none; padding: 7px 9px; cursor: pointer; display: inline-flex;
   color: var(--fg); transition: background 0.12s ease;
@@ -267,6 +318,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 .icon-button:not(:disabled).accent-stop .codicon { color: var(--dbg-stop); }
 .icon-button:not(:disabled).accent-restart .codicon { color: var(--dbg-restart); }
 .icon-button:not(:disabled).accent-step .codicon { color: var(--dbg-step); }
+.icon-button:not(:disabled).accent-profile .codicon { color: var(--dbg-profile); }
 
 .text-button {
   display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; flex-shrink: 0; padding: 6px 12px;
@@ -297,6 +349,10 @@ select:disabled { color: var(--disabled-fg); }
 .meter { flex: 1; height: 6px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg-dim) 30%, transparent); box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; }
 .meter-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-green), var(--accent)); transition: width 0.35s ease; }
 .meter-fill.danger { background: linear-gradient(90deg, var(--meter-danger-from), var(--error-fg)); }
+/* Live progress: at ~8 updates/s the 0.35s width transition never arrives and the bar rubber-bands,
+   so a meter that is being driven by a running profile opts out of it. (Moving integers ARE the
+   liveness indicator here — there is no separate animation to reduce.) */
+.meter-fill.is-live { transition: none; }
 .meter-pct { width: 48px; text-align: right; color: var(--fg-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 /* On overspend, alarm ONLY the label + the value that overran (Spent) — keep the Limit (which was
    NOT exceeded) and the percentage in their normal tokens so the eye lands on the problem number. */

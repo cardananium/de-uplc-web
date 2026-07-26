@@ -2,6 +2,7 @@ import { useStore } from '../store';
 import { Codicon } from '../components/Codicon';
 import { TransactionPanel } from './TransactionPanel';
 import { MainControlsPanel, BudgetPanel } from './MainControlsPanel';
+import { ProfilePanel } from './ProfilePanel';
 import { EditorTabs } from './EditorTabs';
 import { isConcreteRedeemer } from './button-states';
 import {
@@ -40,6 +41,10 @@ export function DebuggerView() {
           <BudgetPanel />
           {hasSession && (
             <>
+              {/* First child of the gate, above the inspectors. It has to be INSIDE it:
+                  TransactionPanel/MainControlsPanel/BudgetPanel render unconditionally, so "right
+                  after BudgetPanel" would mount the profiler with no session at all. */}
+              <ProfilePanel />
               <MachineStatePanel />
               <MachineContextPanel />
               <EnvironmentsPanel />

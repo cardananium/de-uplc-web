@@ -106,6 +106,19 @@ const THEME_COLORS: Record<string, string> = {
   'editorCursor.foreground': '#4f6bed',
   'editorInlayHint.foreground': '#4c5563', // AA (~4.9:1) on the chip-over-paused-band composite; also AA on white/chip
   'editorInlayHint.background': '#10162010',
+  // Overview-ruler marks of the profiler heat lane. A decoration carries a ThemeColor `{ id }`, and
+  // Monaco resolves it through the editor theme and drops its decoration-colour cache on a theme
+  // change — so the ruler repaints itself with no React render at all. That only works while the id
+  // is present here as a PLAIN HEX: the resolver is `Color.fromHex`, and a missing id resolves to
+  // nothing, which does not fail loudly — the mark just disappears.
+  // gen:heat light
+  'deuplc.profHeat0': '#968800',
+  'deuplc.profHeat1': '#c14573',
+  'deuplc.profHeat2': '#913f76',
+  'deuplc.profHeat3': '#6f2b89',
+  'deuplc.profHeat4': '#231f96',
+  'deuplc.profHeat5': '#0f1d42',
+  // end gen:heat
 };
 const THEME_COLORS_DARK: Record<string, string> = {
   'editor.background': '#0c1119',
@@ -126,6 +139,15 @@ const THEME_COLORS_DARK: Record<string, string> = {
   'scrollbarSlider.hoverBackground': '#ffffff20',
   'editorInlayHint.foreground': '#aab4c0',
   'editorInlayHint.background': '#ffffff12',
+  // Dark half of the heat ramp — every id must exist in BOTH maps (see the light map's note).
+  // gen:heat dark
+  'deuplc.profHeat0': '#806a1b',
+  'deuplc.profHeat1': '#c85d84',
+  'deuplc.profHeat2': '#f665a6',
+  'deuplc.profHeat3': '#e29eca',
+  'deuplc.profHeat4': '#d7c5ff',
+  'deuplc.profHeat5': '#efe4fe',
+  // end gen:heat
 };
 
 // Light syntax palette (atom-one-light-ish) — darkened so every token clears WCAG AA (4.5:1) on

@@ -65,3 +65,10 @@ export type {
 } from './term-viewer/serialize';
 // Canonical UPLC pretty-printer (the alternate `uplc`-crate-style editor rendering).
 export { serializeTermUplc } from './term-viewer/uplc-pretty';
+// Structural index over a rendering's locations: parents/children/depth, the nodes on a line and
+// the line of a term id. The only interpreter of `TermLocation` ranges (it normalises `endLine`,
+// which the two renderers store differently).
+export { TermIndex, termIndexFor } from './term-viewer/term-index';
+export type { TermView } from './term-viewer/term-index';
+// Canonical builtin name (shared by both renderers, so a node's label never changes with the view).
+export { builtinName } from './term-viewer/builtin-name';

@@ -13,6 +13,7 @@
 // locations); it emits no inlay hints — the canonical syntax is self-describing.
 
 import type { Constant, PlutusData, Term, Type } from '../debugger-types';
+import { builtinName, termLabel } from './builtin-name';
 import type { SerializedTerm, TermLocation } from './serialize';
 
 /** Serialize a term into canonical UPLC text + its line↔termId locations. */
@@ -29,7 +30,15 @@ class UplcPretty {
   /** Emit `term` (each line prefixed by `indent`) and record its line↔termId range. */
   walk(term: Term, indent: string): void {
     const startLine = this.lines.length;
-    const loc: TermLocation = { startLine, endLine: startLine, termId: term.id };
+    // `kind`/`label` come from the shared helpers, not from the line we are about to print —
+    // the profiler's `Node` column must read the same for a node in either rendering.
+    const loc: TermLocation = {
+      startLine,
+      endLine: startLine, // INCLUSIVE here (the last line emitted below), unlike serialize.ts
+      termId: term.id,
+      kind: term.term_type,
+      label: termLabel(term),
+    };
     this.locations.push(loc);
     const child = indent + '  ';
 
@@ -85,36 +94,6 @@ class UplcPretty {
     }
     loc.endLine = this.lines.length - 1;
   }
-}
-
-// ── Builtins ───────────────────────────────────────────────────────────────────────
-// `term.fun` is the Rust enum variant name (Debug, e.g. `UnListData`); canonical UPLC uses the
-// camelCase builtin name. Most are just the variant with a lower-cased first letter; these are
-// the ones that differ.
-
-const BUILTIN_OVERRIDES: Record<string, string> = {
-  VerifyEd25519Signature: 'verifySignature',
-  Bls12_381_G1_Add: 'bls12_381_G1_add',
-  Bls12_381_G1_Neg: 'bls12_381_G1_neg',
-  Bls12_381_G1_ScalarMul: 'bls12_381_G1_scalarMul',
-  Bls12_381_G1_Equal: 'bls12_381_G1_equal',
-  Bls12_381_G1_Compress: 'bls12_381_G1_compress',
-  Bls12_381_G1_Uncompress: 'bls12_381_G1_uncompress',
-  Bls12_381_G1_HashToGroup: 'bls12_381_G1_hashToGroup',
-  Bls12_381_G2_Add: 'bls12_381_G2_add',
-  Bls12_381_G2_Neg: 'bls12_381_G2_neg',
-  Bls12_381_G2_ScalarMul: 'bls12_381_G2_scalarMul',
-  Bls12_381_G2_Equal: 'bls12_381_G2_equal',
-  Bls12_381_G2_Compress: 'bls12_381_G2_compress',
-  Bls12_381_G2_Uncompress: 'bls12_381_G2_uncompress',
-  Bls12_381_G2_HashToGroup: 'bls12_381_G2_hashToGroup',
-  Bls12_381_MillerLoop: 'bls12_381_millerLoop',
-  Bls12_381_MulMlResult: 'bls12_381_mulMlResult',
-  Bls12_381_FinalVerify: 'bls12_381_finalVerify',
-};
-
-function builtinName(fun: string): string {
-  return BUILTIN_OVERRIDES[fun] ?? (fun ? fun[0].toLowerCase() + fun.slice(1) : fun);
 }
 
 // ── Constants (mirrors uplc crate `Constant::to_doc`) ──────────────────────────────

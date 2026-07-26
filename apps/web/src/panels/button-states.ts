@@ -15,6 +15,13 @@ export interface ButtonStates {
   refresh: boolean;
   stop: boolean;
   showContext: boolean;
+  /**
+   * Whether profiling can be STARTED in this state. `pause` is true on purpose: the profile runner
+   * builds its OWN machine from the entry term, so it never touches the paused debug session. The
+   * one hard no is `running` — there is a single worker and the run already owns it. (The caller
+   * additionally requires `!locked` and something runnable, the same predicate that gates Start.)
+   */
+  profile: boolean;
   /** Whether the budget section is shown for this state (running/pause). */
   budgetVisible: boolean;
   /** Whether budget values render as the "—" placeholder (mid-run, values not queried). */
@@ -24,13 +31,13 @@ export interface ButtonStates {
 export function buttonStates(state: SessionState): ButtonStates {
   switch (state) {
     case 'empty':
-      return { mainIcon: 'start', toggleMain: false, step: false, refresh: false, stop: false, showContext: false, budgetVisible: false, budgetLoading: false };
+      return { mainIcon: 'start', toggleMain: false, step: false, refresh: false, stop: false, showContext: false, profile: false, budgetVisible: false, budgetLoading: false };
     case 'stopped':
-      return { mainIcon: 'start', toggleMain: true, step: false, refresh: false, stop: false, showContext: true, budgetVisible: false, budgetLoading: false };
+      return { mainIcon: 'start', toggleMain: true, step: false, refresh: false, stop: false, showContext: true, profile: true, budgetVisible: false, budgetLoading: false };
     case 'running':
-      return { mainIcon: 'pause', toggleMain: true, step: false, refresh: true, stop: true, showContext: true, budgetVisible: true, budgetLoading: true };
+      return { mainIcon: 'pause', toggleMain: true, step: false, refresh: true, stop: true, showContext: true, profile: false, budgetVisible: true, budgetLoading: true };
     case 'pause':
-      return { mainIcon: 'continue', toggleMain: true, step: true, refresh: true, stop: true, showContext: true, budgetVisible: true, budgetLoading: false };
+      return { mainIcon: 'continue', toggleMain: true, step: true, refresh: true, stop: true, showContext: true, profile: true, budgetVisible: true, budgetLoading: false };
   }
 }
 

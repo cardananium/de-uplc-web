@@ -5,23 +5,35 @@ import {
   type SessionState,
 } from './button-states';
 
-// The authoritative (state × button) table, transcribed from updateButtonStates + body.<state> CSS.
-// Columns: mainIcon, toggleMain, step, refresh, stop, showContext, budgetVisible, budgetLoading
-const TABLE: Record<SessionState, [string, boolean, boolean, boolean, boolean, boolean, boolean, boolean]> = {
-  empty:   ['start',    false, false, false, false, false, false, false],
-  stopped: ['start',    true,  false, false, false, true,  false, false],
-  running: ['pause',    true,  false, true,  true,  true,  true,  true ],
-  pause:   ['continue', true,  true,  true,  true,  true,  true,  false],
+// The authoritative (state × button) table, transcribed from updateButtonStates + body.<state> CSS,
+// plus the profiler cell.
+// Columns: mainIcon, toggleMain, step, refresh, stop, showContext, profile, budgetVisible, budgetLoading
+const TABLE: Record<SessionState, [string, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean]> = {
+  empty:   ['start',    false, false, false, false, false, false, false, false],
+  stopped: ['start',    true,  false, false, false, true,  true,  false, false],
+  running: ['pause',    true,  false, true,  true,  true,  false, true,  true ],
+  pause:   ['continue', true,  true,  true,  true,  true,  true,  true,  false],
 };
 
 describe('buttonStates truth-table', () => {
   (Object.keys(TABLE) as SessionState[]).forEach((state) => {
-    const [icon, toggleMain, step, refresh, stop, showContext, budgetVisible, budgetLoading] = TABLE[state];
+    const [icon, toggleMain, step, refresh, stop, showContext, profile, budgetVisible, budgetLoading] = TABLE[state];
     it(`${state} matches the table`, () => {
       expect(buttonStates(state)).toEqual({
-        mainIcon: icon, toggleMain, step, refresh, stop, showContext, budgetVisible, budgetLoading,
+        mainIcon: icon, toggleMain, step, refresh, stop, showContext, profile, budgetVisible, budgetLoading,
       });
     });
+  });
+});
+
+describe('profile cell', () => {
+  it('is offered exactly in the two states that do not own the worker', () => {
+    // `running` is the only hard no (one worker, the run has it); `pause` is a yes because the
+    // profile runner builds its own machine and never touches the paused session.
+    expect(buttonStates('empty').profile).toBe(false);
+    expect(buttonStates('stopped').profile).toBe(true);
+    expect(buttonStates('running').profile).toBe(false);
+    expect(buttonStates('pause').profile).toBe(true);
   });
 });
 

@@ -8,6 +8,7 @@ use de_uplc::{
     StepResult,
 };
 use de_uplc::budget::SerializableBudget; // from get_budget()
+use de_uplc::profile::{SerializableProfile, ProfileRunResult}; // from profile_report() / profile_run()
 use de_uplc::machine_state::SerializableMachineStateLazy; // from get_machine_state_lazy()
 use de_uplc::context::SerializableMachineContextLazy; // from get_machine_context_lazy()
 use de_uplc::value::{SerializableValueLazy, SerializableEnvLazy}; // from get_current_env_lazy()
@@ -109,6 +110,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let step_result_schema = schema_for!(StepResult);
     fs::write("schemas/StepResult.json", serde_json::to_string_pretty(&step_result_schema)?)?;
 
+    // 9. SerializableProfile - returned from SessionController::profile_report()
+    let profile_schema = schema_for!(SerializableProfile);
+    fs::write("schemas/SerializableProfile.json", serde_json::to_string_pretty(&profile_schema)?)?;
+
+    // 10. ProfileRunResult - returned from SessionController::profile_run() (one chunk's progress)
+    let profile_run_result_schema = schema_for!(ProfileRunResult);
+    fs::write("schemas/ProfileRunResult.json", serde_json::to_string_pretty(&profile_run_result_schema)?)?;
+
     // Lazy versions - returned from lazy API methods
     let machine_state_lazy_schema = schema_for!(SerializableMachineStateLazy);
     fs::write("schemas/SerializableMachineStateLazy.json", serde_json::to_string_pretty(&machine_state_lazy_schema)?)?;
@@ -132,6 +141,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut value_json = serde_json::to_value(&value_schema)?;
     let mut execution_status_json = serde_json::to_value(&execution_status_schema)?;
     let mut step_result_json = serde_json::to_value(&step_result_schema)?;
+    let mut profile_json = serde_json::to_value(&profile_schema)?;
+    let mut profile_run_result_json = serde_json::to_value(&profile_run_result_schema)?;
     let mut machine_state_lazy_json = serde_json::to_value(&machine_state_lazy_schema)?;
     let mut machine_context_lazy_json = serde_json::to_value(&machine_context_lazy_schema)?;
     let mut value_lazy_json = serde_json::to_value(&value_lazy_schema)?;
@@ -146,6 +157,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fix_schema_and_defs(&mut value_json)?;
     fix_schema_and_defs(&mut execution_status_json)?;
     fix_schema_and_defs(&mut step_result_json)?;
+    fix_schema_and_defs(&mut profile_json)?;
+    fix_schema_and_defs(&mut profile_run_result_json)?;
     fix_schema_and_defs(&mut machine_state_lazy_json)?;
     fix_schema_and_defs(&mut machine_context_lazy_json)?;
     fix_schema_and_defs(&mut value_lazy_json)?;
@@ -166,6 +179,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "SerializableValue": value_json,
             "SerializableExecutionStatus": execution_status_json,
             "StepResult": step_result_json,
+            "SerializableProfile": profile_json,
+            "ProfileRunResult": profile_run_result_json,
             "SerializableMachineStateLazy": machine_state_lazy_json,
             "SerializableMachineContextLazy": machine_context_lazy_json,
             "SerializableValueLazy": value_lazy_json,
@@ -185,11 +200,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  - SerializableValue (from get_current_env)");
     println!("  - SerializableExecutionStatus (status only)");
     println!("  - StepResult (from step - includes term_id and status)");
+    println!("  - SerializableProfile (from profile_report)");
+    println!("  - ProfileRunResult (from profile_run)");
     println!("  - SerializableMachineStateLazy (from get_machine_state_lazy)");
     println!("  - SerializableMachineContextLazy (from get_machine_context_lazy)");
     println!("  - SerializableValueLazy (from get_current_env_lazy)");
     println!("  - SerializableEnvLazy (from get_current_env_lazy)");
-    println!("  Total: 12 root schemas + 1 combined");
+    println!("  Total: 14 root schemas + 1 combined");
     println!();
     println!("Note: All dependent types are automatically included in the schema definitions.");
 

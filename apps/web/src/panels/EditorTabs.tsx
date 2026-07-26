@@ -1,15 +1,19 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { useStore } from '../store';
-import { useTabsStore, TERM_TAB } from '../editor/tabs-store';
+import { useTabsStore, focusProfileFilter, TERM_TAB, type Tab } from '../editor/tabs-store';
 import { NodeExplorer } from '../editor/NodeExplorer';
 import { triggerTermFind, triggerDataFind } from '../editor/editor-actions';
 import { Codicon } from '../components/Codicon';
+import { EmptyState } from '../components/EmptyState';
 
 // Lazy so the Monaco + vscode-textmate chunk loads only when an editor first mounts.
 const TermEditor = lazy(() => import('../editor/TermEditor').then((m) => ({ default: m.TermEditor })));
 const CodeView = lazy(() => import('../editor/CodeView').then((m) => ({ default: m.CodeView })));
+const ProfileTab = lazy(() => import('./profile/ProfileTab').then((m) => ({ default: m.ProfileTab })));
 
-const EditorFallback = () => <div className="muted" style={{ padding: 24, textAlign: 'center' }}>Loading editor…</div>;
+const EditorFallback = () => <EmptyState title="Loading editor…" />;
+
+const TAB_ICON: Record<Tab['kind'], string> = { data: 'json', node: 'list-tree', profile: 'graph' };
 
 /**
  * App tab bar + editor content area. The Term tab hosts the Monaco term editor;
@@ -24,21 +28,41 @@ export function EditorTabs() {
   const termText = useStore((s) => s.termText);
 
   const activeData = activeTabId === TERM_TAB ? undefined : tabs.find((t) => t.id === activeTabId);
+  const termActive = activeTabId === TERM_TAB;
+  const termWrap = useRef<HTMLDivElement>(null);
 
-  // Find is available on the Term tab and on data (Monaco CodeView) tabs — NOT on node-explorer
-  // tabs (those aren't Monaco editors; they have their own search box).
-  const findTrigger = activeTabId === TERM_TAB
+  // `inert` is set imperatively: React 18's typings have no such attribute, and this is the one
+  // place that needs it — a hidden-but-mounted 41k-line editor must leave the accessibility tree,
+  // find-in-page and the tab order.
+  useEffect(() => {
+    const el = termWrap.current;
+    if (!el) return;
+    if (termActive) {
+      el.removeAttribute('inert');
+      el.removeAttribute('aria-hidden');
+    } else {
+      el.setAttribute('inert', '');
+      el.setAttribute('aria-hidden', 'true');
+    }
+  }, [termActive]);
+
+  // Find is available on the Term tab, on data (Monaco CodeView) tabs, and on the profile report —
+  // where it means "focus the row filter", not Monaco's find widget. NOT on node-explorer tabs
+  // (those aren't Monaco editors; they have their own search box).
+  const findTrigger = termActive
     ? (termText ? triggerTermFind : undefined)
-    : activeData?.kind === 'data' ? triggerDataFind : undefined;
+    : activeData?.kind === 'data' ? triggerDataFind
+      : activeData?.kind === 'profile' ? focusProfileFilter
+        : undefined;
 
   return (
     <div className="panel">
       <div className="tabbar" role="tablist">
         <button
           id="tab-term"
-          className={`tab${activeTabId === TERM_TAB ? ' active' : ''}`}
+          className={`tab${termActive ? ' active' : ''}`}
           role="tab"
-          aria-selected={activeTabId === TERM_TAB}
+          aria-selected={termActive}
           aria-controls="editor-tabpanel"
           onClick={() => setActive(TERM_TAB)}
         >
@@ -57,7 +81,7 @@ export function EditorTabs() {
               aria-controls="editor-tabpanel"
               onClick={() => setActive(t.id)}
             >
-              <Codicon name={t.kind === 'node' ? 'list-tree' : 'json'} />
+              <Codicon name={TAB_ICON[t.kind]} />
               {t.title}
             </button>
             <button className="tab-close" title="Close tab" aria-label={`Close ${t.title}`} onClick={() => closeTab(t.id)}>
@@ -77,29 +101,57 @@ export function EditorTabs() {
         className="tab-content"
         role="tabpanel"
         id="editor-tabpanel"
-        aria-labelledby={activeTabId === TERM_TAB ? 'tab-term' : `tab-${activeTabId}`}
+        aria-labelledby={termActive ? 'tab-term' : `tab-${activeTabId}`}
       >
-        <Suspense fallback={<EditorFallback />}>
-          {activeTabId === TERM_TAB ? (
-            // Mount Monaco only once there's a term (i.e. a session) — keeps the
-            // heavy editor chunk off the initial page load (plan §lazy-import).
-            termText ? (
-              <TermEditor />
-            ) : (
-              <div className="muted" style={{ padding: 24, textAlign: 'center' }}>
-                Load a transaction and select a redeemer to view the term
-              </div>
-            )
-          ) : activeData ? (
-            activeData.kind === 'node' ? (
-              <NodeExplorer source={activeData.source} path={activeData.path} nodeKind={activeData.nodeKind} label={activeData.title} />
-            ) : (
-              <CodeView content={activeData.content} language={activeData.language} />
-            )
-          ) : (
-            <div className="muted" style={{ padding: 8 }}>(tab closed)</div>
-          )}
-        </Suspense>
+        {/*
+          The Script tab stays MOUNTED and is hidden with `display: none` — it is never unmounted by
+          a tab switch. `TermEditor`'s cleanup disposes the editor, the model and every decoration
+          collection, so the profiler's main loop (hot line → report → back) would pay a full
+          `editor.create` plus a TextMate tokenisation of 41k lines in both directions, and lose the
+          scroll position each way. `TermEditor` subscribes to `activeTabId` itself and re-layouts
+          when it becomes visible.
+
+          `<TermEditor/>` is mounted UNCONDITIONALLY, term or no term. Every
+          `loadTransaction` / `loadProgram` / `loadProgramParts` / `selectRedeemer` sets
+          `termText: undefined` before the new term arrives, so a `termText ? … : placeholder`
+          ternary here would destroy and re-create the editor on every single load — exactly the
+          cost this whole arrangement exists to avoid. The empty state is drawn by `TermEditor` as
+          an OVERLAY on the editor instead. The price is that the Monaco chunk now loads with the
+          first paint rather than with the first session; the editor is created once for the life of
+          the page in exchange.
+
+          Hidden means hidden: `inert` + `aria-hidden` keep a 41k-line term out of the accessibility
+          tree, out of the browser's find-in-page and out of the tab order.
+
+          Each tab gets its OWN <Suspense>: with one boundary for the whole panel, the first lazy
+          import of `ProfileTab` would suspend the already-mounted `TermEditor` with it and replace
+          the editor with the fallback.
+        */}
+        <div ref={termWrap} style={{ display: termActive ? 'contents' : 'none' }}>
+          <Suspense fallback={<EditorFallback />}>
+            <TermEditor />
+          </Suspense>
+        </div>
+
+        {!termActive && (
+          <Suspense fallback={<EditorFallback />}>
+            {(() => {
+              if (!activeData) return <EmptyState title="This tab was closed." />;
+              switch (activeData.kind) {
+                case 'node':
+                  return <NodeExplorer source={activeData.source} path={activeData.path} nodeKind={activeData.nodeKind} label={activeData.title} />;
+                case 'data':
+                  return <CodeView content={activeData.content} language={activeData.language} />;
+                case 'profile':
+                  return <ProfileTab />;
+                default: {
+                  const _x: never = activeData;
+                  return null;
+                }
+              }
+            })()}
+          </Suspense>
+        )}
       </div>
     </div>
   );

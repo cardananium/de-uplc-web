@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProfileRunResult",
+  "description": "What one `profile_run(max_steps)` chunk reports back. `steps`/`cpu`/`mem` are cumulative since\n`profile_start()`, and `outcome` is `Running` whenever the chunk merely ran out of its own\nbudget: `max_steps` bounds the CHUNK, never the run — the step cap is the host's.",
+  "type": "object",
+  "properties": {
+    "cpu": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "mem": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "outcome": {
+      "$ref": "#/$defs/ProfileRunOutcome"
+    },
+    "steps": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "outcome",
+    "steps",
+    "cpu",
+    "mem"
+  ],
+  "$defs": {
+    "ProfileRunOutcome": {
+      "description": "Plain string union (`'Running' | 'Done' | 'Error'`) — the chunk result carries no payload, so it\nneeds no tag object; the failure message and node arrive with the report.",
+      "type": "string",
+      "enum": [
+        "Running",
+        "Done",
+        "Error"
+      ]
+    }
+  }
+}

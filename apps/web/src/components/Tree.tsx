@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { LazyKind, UplcNode } from '@de-uplc/core';
 import { Codicon } from './Codicon';
+import { EmptyState } from './EmptyState';
 import { openNodeInTab, revealTermInEditor } from '../store';
 
 function iconColorVar(iconColor?: string): string | undefined {
   if (!iconColor) return undefined;
+  // A caller that already speaks CSS passes its own token through untouched (the profiler's cost
+  // tree tints each row with `var(--prof-heat-N)`); the rest are VS Code ThemeColor ids, mapped.
+  if (iconColor.startsWith('var(--')) return iconColor;
   if (iconColor.toLowerCase().includes('warning')) return 'var(--dbg-pause)';
   if (iconColor.toLowerCase().includes('error')) return 'var(--error-fg)';
   return undefined;
@@ -48,24 +52,36 @@ function TreeRow({ node, depth, filter }: { node: UplcNode; depth: number; filte
   // search deeper (laziness: only loaded nodes are searchable; expanding loads more).
   if (q !== '' && !matches && !view.collapsible) return null;
 
+  const load = async () => {
+    if (children !== null) return;
+    setLoading(true);
+    try {
+      const c = await node.getChildren();
+      setChildren(c);
+      setFailed(false);
+    } catch (e) {
+      setChildren([]);
+      setFailed(true);
+      console.error('[tree] getChildren failed', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const toggle = async () => {
     if (!view.collapsible) return;
-    if (!expanded && children === null) {
-      setLoading(true);
-      try {
-        const c = await node.getChildren();
-        setChildren(c);
-        setFailed(false);
-      } catch (e) {
-        setChildren([]);
-        setFailed(true);
-        console.error('[tree] getChildren failed', e);
-      } finally {
-        setLoading(false);
-      }
-    }
+    if (!expanded) await load();
     setExpanded((e) => !e);
   };
+
+  // A node that STARTS expanded has to load its children itself — the load used to live inside
+  // `toggle()`, so `expanded: true` rendered an open node with nothing under it until it was
+  // collapsed and reopened.
+  useEffect(() => {
+    if (view.collapsible && view.expanded) void load();
+    // Mount only: `expanded` is component state from here on, and re-running would fight the user.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div>
@@ -124,7 +140,7 @@ function TreeRow({ node, depth, filter }: { node: UplcNode; depth: number; filte
  * labels and hides non-matching leaves among what's loaded.
  */
 export function Tree({ roots, generation, filter = '' }: { roots: UplcNode[]; generation: number; filter?: string }) {
-  if (roots.length === 0) return <div className="muted" style={{ padding: '4px 6px' }}>(empty)</div>;
+  if (roots.length === 0) return <EmptyState title="Nothing to show" compact />;
   return (
     <div key={generation} role="tree" className="tree">
       {roots.map((n, i) => <TreeRow key={i} node={n} depth={0} filter={filter} />)}

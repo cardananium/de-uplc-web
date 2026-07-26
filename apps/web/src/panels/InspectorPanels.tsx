@@ -3,6 +3,7 @@ import { buildMachineStateRoots, buildContextRoots, buildEnvRoots, type UplcNode
 import { useStore, getSession } from '../store';
 import { Tree } from '../components/Tree';
 import { Codicon } from '../components/Codicon';
+import { EmptyState } from '../components/EmptyState';
 
 function TreePanel({ title, roots, generation }: { title: string; roots: UplcNode[]; generation: number }) {
   return (
@@ -53,8 +54,10 @@ export function LogsPanel() {
   return (
     <div className="panel">
       <div className="panel-title">Logs</div>
+      {/* `compact`: inside a sidebar panel, where the full block's 28px of padding would dominate
+          the card it sits in. */}
       {logs.length === 0 ? (
-        <div className="muted" style={{ padding: '4px 6px' }}>(no logs)</div>
+        <EmptyState compact icon="output" title="No logs" hint="Traces printed by the script appear here." />
       ) : (
         <pre style={{
           background: 'var(--bg-subtle)', padding: 8, borderRadius: 6, fontSize: 12, margin: '6px 0 0',
@@ -77,9 +80,8 @@ export function BreakpointsPanel() {
     <div className="panel">
       <div className="panel-title">Breakpoints</div>
       {breakpoints.length === 0 ? (
-        <div className="muted" style={{ padding: '6px' }}>
-          (none — click the term editor gutter or press F9 to add)
-        </div>
+        <EmptyState compact icon="circle-outline" title="No breakpoints"
+          hint="Click the term editor's gutter, or press F9 on a term line, to add one." />
       ) : (
         <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
           {breakpoints.map((b) => (

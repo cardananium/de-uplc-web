@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SerializableProfile",
+  "description": "A finished (or interrupted) profile of one program: where its ExUnits went, per node of the\nsource term, per builtin and per machine step kind. This is a profile of TERM NODES, not of\nfunctions — UPLC has none, and recursion collapses into one node with many hits.",
+  "type": "object",
+  "properties": {
+    "builtins": {
+      "description": "Only builtins that actually fired, in `DefaultFunction` order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ProfileBuiltin"
+      }
+    },
+    "steps": {
+      "description": "All nine machine step kinds in `StepKind` order (zeros included — the report renders them as\na fixed table) plus a tenth `StartUp` row. StartUp is not a machine step but the flat\ncharge in `ManualMachine::new`; it is here because the invariant it feeds is\n`Σ builtins + Σ steps == cpu_spent`, and the startup charge belongs to no node.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ProfileStep"
+      }
+    },
+    "terms": {
+      "description": "One row per term node that actually executed (`hits > 0`). Nodes that never ran are NOT\nemitted — a 200k-node program would otherwise pay for 200k zero rows on every report, and\nthe report derives \"never evaluated\" from `termLocations` minus these rows anyway.\nA node runs only if its parent ran, so every node with a non-zero subtree cost is present.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ProfileTerm"
+      }
+    },
+    "timeline": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ProfileSample"
+      }
+    },
+    "totals": {
+      "$ref": "#/$defs/ProfileTotals"
+    },
+    "traces": {
+      "description": "The first `TRACE_CAP` traces the profiled run emitted, in order. Capped because a script that\ntraces per iteration is otherwise unbounded: 100k traces measured at ~8.6 MB of engine heap\nand a 7.3 MB report, and nothing about the machine stops that growing with the loop count.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ProfileTrace"
+      }
+    },
+    "tracesDropped": {
+      "description": "Traces past the cap. Non-zero means `traces` is a prefix, and the UI has to say so rather\nthan present a truncated log as the whole log (\"no silent caps\").",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "totals",
+    "terms",
+    "builtins",
+    "steps",
+    "timeline",
+    "traces",
+    "tracesDropped"
+  ],
+  "$defs": {
+    "ProfileAttribution": {
+      "description": "Which attribution rule charged the Return steps of this run. Read by the UI for the `≈` markers and the\nattribution sentence — the marker only means anything while `last_term` is in effect.",
+      "oneOf": [
+        {
+          "description": "A Return step is charged to the last term that actually executed. Cheap, but it lands a\nbuiltin's cost on its ARGUMENT node. Still constructible (and pinned by the v1/v2 tests as\nthe baseline the apply-site rule is compared against); no live session selects it.",
+          "type": "string",
+          "const": "last_term"
+        },
+        {
+          "description": "A Return step is charged to the apply site it returns into, tracked by a shadow stack of\n`Term::Apply` ids. What every session reports.",
+          "type": "string",
+          "const": "apply_site"
+        }
+      ]
+    },
+    "ProfileBuiltin": {
+      "type": "object",
+      "properties": {
+        "calls": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "cpu": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "mem": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "name": {
+          "description": "The Plutus name as the term viewer renders it (`unConstrData`), not the Aiken snake_case one.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "calls",
+        "cpu",
+        "mem"
+      ]
+    },
+    "ProfileOutcome": {
+      "description": "How the profiled run ended. Internally tagged (like `SerializableExecutionStatus`) so the TS\nunion discriminates on `outcome_type`; `Limit` and `Cancelled` are host labels, not engine\noutcomes — the step cap and the cancel flag live in the store.",
+      "oneOf": [
+        {
+          "description": "The report was taken mid-run — the program has not finished.",
+          "type": "object",
+          "properties": {
+            "outcome_type": {
+              "type": "string",
+              "const": "Running"
+            }
+          },
+          "required": [
+            "outcome_type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "outcome_type": {
+              "type": "string",
+              "const": "Done"
+            }
+          },
+          "required": [
+            "outcome_type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "outcome_type": {
+              "type": "string",
+              "const": "Error"
+            },
+            "termId": {
+              "description": "The node the script died on, so \"Go to failure\" has somewhere to lead. `-1` when the\nmachine could not name one.",
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "required": [
+            "outcome_type",
+            "message",
+            "termId"
+          ]
+        }
+      ]
+    },
+    "ProfileSample": {
+      "description": "A cumulative spend sample: `cpu`/`mem` are totals as of `step`, not deltas.",
+      "type": "object",
+      "properties": {
+        "cpu": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "mem": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "step": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "step",
+        "cpu",
+        "mem"
+      ]
+    },
+    "ProfileStep": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "cpu": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "mem": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "kind",
+        "count",
+        "cpu",
+        "mem"
+      ]
+    },
+    "ProfileTerm": {
+      "type": "object",
+      "properties": {
+        "hits": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "returnCpu": {
+          "description": "The part of self charged on Return steps. Under `last_term` attribution a row whose\n`return_cpu / self_cpu >= 0.5` is knowingly approximate (v1 puts a builtin's cost on its\nargument), and the report marks it `≈`.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "returnMem": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "selfCpu": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "selfMem": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "termId": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "totalCpu": {
+          "description": "Self summed over this node's static AST descendants, plus its own self.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "totalMem": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "termId",
+        "hits",
+        "selfCpu",
+        "selfMem",
+        "totalCpu",
+        "totalMem",
+        "returnCpu",
+        "returnMem"
+      ]
+    },
+    "ProfileTotals": {
+      "type": "object",
+      "properties": {
+        "attribution": {
+          "$ref": "#/$defs/ProfileAttribution"
+        },
+        "cpuLimit": {
+          "description": "The ExUnits DECLARED by the session's redeemer, or `None` when the session has no redeemer\n(scriptOnly / parts). Without this the report would show a plausible-looking percentage of\n`ExBudget::default()` — a generic reference budget unrelated to this script's declared units.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "cpuSpent": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "memLimit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "memSpent": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "outcome": {
+          "$ref": "#/$defs/ProfileOutcome"
+        },
+        "startupCpu": {
+          "description": "The flat charge `ManualMachine::new` takes before the first step. Part of `cpu_spent`, but\nattributed to no term node — hence node self-costs sum to `cpu_spent - startup_cpu`.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "startupMem": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "steps": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "steps",
+        "cpuSpent",
+        "memSpent",
+        "startupCpu",
+        "startupMem",
+        "attribution",
+        "outcome"
+      ]
+    },
+    "ProfileTrace": {
+      "description": "One `trace` emitted during the PROFILE run, from the runner's own machine buffer — the debug\nsession's log is a different buffer and this run does not touch it.",
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "message": {
+          "type": "string"
+        },
+        "step": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "termId": {
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "required": [
+        "index",
+        "message",
+        "termId",
+        "step"
+      ]
+    }
+  }
+}

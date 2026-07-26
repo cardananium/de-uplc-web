@@ -8,6 +8,7 @@ pub mod protocol_params;
 pub mod script_context;
 pub mod debugger_engine;
 pub mod budget;
+pub mod profile;
 pub mod wasm_tools;
 pub mod tx_utils;
 pub mod lazy_loading;
@@ -82,6 +83,19 @@ pub use debugger_engine::{
     DebuggerError,
     SerializableExecutionStatus,
     StepResult,
+};
+pub use profile::{
+    SerializableProfile,
+    ProfileTotals,
+    ProfileAttribution,
+    ProfileOutcome,
+    ProfileTerm,
+    ProfileBuiltin,
+    ProfileStep,
+    ProfileSample,
+    ProfileTrace,
+    ProfileRunResult,
+    ProfileRunOutcome,
 };
 pub use wasm_tools::{
     JsError,
