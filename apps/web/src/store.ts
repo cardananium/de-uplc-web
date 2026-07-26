@@ -537,6 +537,11 @@ export const useStore = create<AppState>((set, get) => {
                       : report.totals.outcome.outcome_type === 'Error' ? 'Error' : 'Done',
         profileRunnerLive: capped || profileCancel,
       });
+      // Surface the report as soon as there is one. Profiling is an explicit, seconds-long action
+      // whose entire output is that tab, and the sidebar summary is a teaser for it — leaving the
+      // user on the term with a quiet "Done" pill hides the thing they asked for. The tab is a
+      // singleton, so a re-profile refocuses instead of stacking.
+      useTabsStore.getState().openProfileTab();
     } catch (e) {
       // Real rejections only (e.g. a JsError thrown inside profile_run). A DEAD WORKER never lands
       // here — see onFatalWorker.
