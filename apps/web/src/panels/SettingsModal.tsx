@@ -49,12 +49,16 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   return (
     <div className="modal-overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-label="Settings" tabIndex={-1} style={{ maxWidth: 460 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <div className="modal-head">
           <Codicon name="settings-gear" />
           <span style={{ fontWeight: 600, flex: 1 }}>Settings</span>
           <button className="icon-button" title="Close" aria-label="Close settings" onClick={onClose}><Codicon name="close" /></button>
         </div>
 
+        {/* The one scrolling region. The profiler section made this dialog taller than a laptop
+            viewport, and a centred box that is taller than the screen loses its TOP as well as its
+            bottom — the title and the close button went off-screen with no way to reach them. */}
+        <div className="modal-body">
         <div className="settings-grid">
           <label htmlFor="set-theme">Theme</label>
           <select id="set-theme" value={s.theme} onChange={(e) => s.set('theme', e.target.value as ThemePref)}>
@@ -151,6 +155,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
           <label htmlFor="set-retries">Retry attempts</label>
           <NumberField id="set-retries" value={s.retryAttempts} min={1} max={10}
             onCommit={(n) => s.set('retryAttempts', n)} />
+        </div>
         </div>
 
         <div className="modal-actions">

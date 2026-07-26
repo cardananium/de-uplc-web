@@ -485,8 +485,18 @@ code { background: var(--bg-subtle); padding: 1px 5px; border-radius: 4px; font-
 
 /* modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 50; }
-.modal { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; max-width: 380px; box-shadow: var(--shadow-lg); }
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.modal {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 20px; max-width: 380px; box-shadow: var(--shadow-lg);
+  /* Never taller than the window. A dialog centred by the overlay's `align-items: center` grows in
+     BOTH directions once it outgrows the viewport, so an unbounded one loses its title and close
+     button off the top edge — unreachable, since the box itself does not scroll. */
+  display: flex; flex-direction: column; max-height: calc(100vh - 32px);
+}
+/* Head and actions stay put; only the body scrolls. */
+.modal-head { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin-bottom: 12px; }
+.modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; margin: 0 -20px; padding: 0 20px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; flex: 0 0 auto; }
 
 /* share dialog */
 .share-url {

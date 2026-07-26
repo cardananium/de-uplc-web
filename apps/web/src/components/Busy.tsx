@@ -13,8 +13,9 @@ import { decideBusy, type BusyMemo } from './busy-timing';
  * Delayed + minimum-held visibility for a piece of in-flight work. THE single application of the
  * anti-flash rules: call sites pass a raw "is it busy" boolean and render whatever this returns.
  */
-export function useBusyIndicator(busy: boolean): boolean {
+export function useBusyIndicator(busy: boolean, opts?: { delayMs?: number }): boolean {
   const memo = useRef<BusyMemo>({});
+  const delayMs = opts?.delayMs;
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -24,14 +25,14 @@ export function useBusyIndicator(busy: boolean): boolean {
     // `performance.now()` and not `Date.now()`: these are pure durations, and a wall-clock that
     // steps backwards mid-load would push the next re-check that far into the future.
     const tick = () => {
-      const d = decideBusy(memo.current, busy, performance.now());
+      const d = decideBusy(memo.current, busy, performance.now(), delayMs);
       memo.current = d.memo;
       setVisible(d.visible);
       if (d.recheckIn !== undefined) timer = setTimeout(tick, d.recheckIn);
     };
     tick();
     return () => { if (timer !== undefined) clearTimeout(timer); };
-  }, [busy]);
+  }, [busy, delayMs]);
 
   return visible;
 }
@@ -144,7 +145,15 @@ export function LaunchOverlay({ kind }: { kind: LaunchKind | null }) {
   const crashEpoch = useStore((s) => s.crashEpoch);
   const armed = useRef(crashEpoch);
   const live = kind !== null && crashEpoch === armed.current;
-  const visible = useBusyIndicator(live);
+  // NO delay here, unlike every other indicator. Two reasons, and the second is decisive:
+  //  · there is nothing to flash over — a shared link opens into an empty workspace, so the card is
+  //    the only thing on screen either way;
+  //  · the delay could not be honoured anyway. Opening a link parses a large script and serialises
+  //    its term on the main thread, which blocks for seconds; a 200 ms timer set just before that
+  //    fires only once the work is over. Measured on a 15k-node link: the card never appeared at
+  //    all — 3.1 s warm, 5.9 s cold, and the user watched an empty page for all of it.
+  // The minimum-visible hold still applies, so a warm, tiny link cannot strobe it.
+  const visible = useBusyIndicator(live, { delayMs: 0 });
   const phase = useStore((s) => s.loadingPhase);
   const [label, setLabel] = useState<string | null>(null);
   useEffect(() => {

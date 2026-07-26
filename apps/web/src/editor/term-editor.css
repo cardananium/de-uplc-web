@@ -66,6 +66,11 @@
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
   scrollbar-width: thin;
+  /* The strip is a flex ITEM of the editor column, so it shrinks by default when the pane below
+     wants room — measured at 19px tall around 30px tabs, which squashed them against its top edge
+     and clipped the row. It has one line of content and no business shrinking at all. */
+  flex: 0 0 auto;
+  min-height: 0;
 }
 .tab {
   flex: 0 0 auto;
