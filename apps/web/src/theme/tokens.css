@@ -295,7 +295,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 
 /* Narrow titlebar: the pill drops its word and keeps the number. */
 @media (max-width: 900px) {
-  .status-badge.tone-profile .pill-word { display: none; }
+  .status-badge.tone-profile .pill-word,
+  .icon-button.is-labelled .pill-word { display: none; }
+  /* Back to a square hit area once the word is gone. */
+  .icon-button.is-labelled { gap: 0; padding-right: 9px; }
 }
 
 /* ── transport pill (icon group) ── */
@@ -303,6 +306,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 .icon-button {
   background: transparent; border: none; padding: 7px 9px; cursor: pointer; display: inline-flex;
   color: var(--fg); transition: background 0.12s ease;
+}
+/* An icon button that also says what it does. Only the profiler uses it: the transport glyphs are a
+   vocabulary every debugger shares, a flame is not. The gap and the smaller right padding keep the
+   label from looking bolted on; the label itself collapses with the other `.pill-word`s. */
+.icon-button.is-labelled {
+  align-items: center; gap: 6px; padding-right: 11px; font: inherit; font-size: 12.5px;
 }
 .icon-button + .icon-button { border-left: 1px solid var(--border); }
 .icon-button:hover:not(:disabled) { background: var(--bg-subtle); }

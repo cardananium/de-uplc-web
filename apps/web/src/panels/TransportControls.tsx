@@ -70,17 +70,22 @@ export function TransportControls() {
       </div>
 
       {/* Profiler — its own box. While a profile runs the SAME button cancels it, so the control
-          the user needs is exactly where they left their pointer. */}
+          the user needs is exactly where they left their pointer.
+          Labelled, unlike the transport: ▶/⏸/↻/■ are a vocabulary every debugger shares, a flame is
+          not, and this button starts a seconds-long job. The word collapses on a narrow titlebar
+          (the bar scrolls), leaving the icon — which is why the icon still carries the title. */}
       <div className="icon-box">
         {profiling ? (
-          <button className="icon-button accent-stop" title="Cancel profiling" aria-label="Cancel profiling"
+          <button className="icon-button accent-stop is-labelled" title="Cancel profiling" aria-label="Cancel profiling"
             onClick={cancelProfile}>
             <Codicon name="debug-stop" />
+            <span className="pill-word">Cancel</span>
           </button>
         ) : (
-          <button className="icon-button accent-profile" title="Profile" aria-label="Profile"
+          <button className="icon-button accent-profile is-labelled" title="Profile" aria-label="Profile"
             disabled={!bs.profile || locked || !canStart} onClick={() => void runProfile()}>
             <Codicon name="flame" />
+            <span className="pill-word">Profile</span>
           </button>
         )}
       </div>
