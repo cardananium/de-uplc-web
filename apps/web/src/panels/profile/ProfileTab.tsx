@@ -102,6 +102,25 @@ export function ProfileTab() {
   );
   const decode = useMemo(() => (profile ? dataDecoding(profile.builtins, metric) : undefined), [profile, metric]);
 
+  // The detail panel is a quarter of the report; opening onto "No node selected" spends it on a
+  // sentence and hides what selection is even for. So the top-ranked row is selected on arrival —
+  // it is the answer to the question the report is asking, and it doubles as a worked example of
+  // what a row gives you.
+  //
+  // ONCE per profile, keyed on the profile itself and read through `getState()`: re-running it
+  // whenever the selection is empty would fight the user, because arrowing onto a row with no
+  // source location clears the selection on purpose (TermsTable) and this would snap the cursor
+  // straight back to rank 1. A selection that survived a tab switch is likewise left alone.
+  const autoSelected = useRef<unknown>(undefined);
+  useEffect(() => {
+    if (autoSelected.current === profile) return;
+    autoSelected.current = profile;
+    if (useStore.getState().profileSelected !== undefined) return;
+    // Rows with no location in this rendering are not selectable at all — same rule as the table.
+    const first = derived?.rows.find((r) => r.row.line !== undefined);
+    if (first) useStore.getState().selectProfileNode(first.row.termId);
+  }, [profile, derived]);
+
   // While a profile runs the tab is the progress card, even when an older report is still in the
   // store: the tables would be the PREVIOUS run's, under a pill that says Profiling.
   if (status === 'running') {
@@ -245,11 +264,14 @@ export function ProfileTab() {
                 onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setText(''); } }}
               />
             </label>
-            <span className="prof-meta">
-              {text.trim() === ''
-                ? 'matched — · —'
-                : `matched ${fmtInt(derived.matchedCount)} nodes · ${fmtPct(derived.matchedSelf, index.total)} of ${unit}`}
-            </span>
+            {/* Only while the box has something in it. With no filter typed there is nothing to
+                have matched, and `matched — · —` reads as data that failed to arrive rather than
+                as a question nobody asked. */}
+            {text.trim() !== '' && (
+              <span className="prof-meta">
+                matched {fmtInt(derived.matchedCount)} nodes · {fmtPct(derived.matchedSelf, index.total)} of {unit}
+              </span>
+            )}
           </div>
         )}
       </div>

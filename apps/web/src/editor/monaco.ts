@@ -112,12 +112,12 @@ const THEME_COLORS: Record<string, string> = {
   // is present here as a PLAIN HEX: the resolver is `Color.fromHex`, and a missing id resolves to
   // nothing, which does not fail loudly — the mark just disappears.
   // gen:heat light
-  'deuplc.profHeat0': '#968800',
-  'deuplc.profHeat1': '#c14573',
-  'deuplc.profHeat2': '#913f76',
-  'deuplc.profHeat3': '#6f2b89',
-  'deuplc.profHeat4': '#231f96',
-  'deuplc.profHeat5': '#0f1d42',
+  'deuplc.profHeat0': '#aa8100',
+  'deuplc.profHeat1': '#ad5d00',
+  'deuplc.profHeat2': '#a53917',
+  'deuplc.profHeat3': '#8e2015',
+  'deuplc.profHeat4': '#6d1416',
+  'deuplc.profHeat5': '#45080f',
   // end gen:heat
 };
 const THEME_COLORS_DARK: Record<string, string> = {
@@ -141,12 +141,12 @@ const THEME_COLORS_DARK: Record<string, string> = {
   'editorInlayHint.background': '#ffffff12',
   // Dark half of the heat ramp — every id must exist in BOTH maps (see the light map's note).
   // gen:heat dark
-  'deuplc.profHeat0': '#806a1b',
-  'deuplc.profHeat1': '#c85d84',
-  'deuplc.profHeat2': '#f665a6',
-  'deuplc.profHeat3': '#e29eca',
-  'deuplc.profHeat4': '#d7c5ff',
-  'deuplc.profHeat5': '#efe4fe',
+  'deuplc.profHeat0': '#b14c4b',
+  'deuplc.profHeat1': '#cf5f4d',
+  'deuplc.profHeat2': '#e07f3e',
+  'deuplc.profHeat3': '#ff990f',
+  'deuplc.profHeat4': '#f6c495',
+  'deuplc.profHeat5': '#ffea7e',
   // end gen:heat
 };
 

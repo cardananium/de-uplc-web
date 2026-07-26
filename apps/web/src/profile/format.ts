@@ -60,8 +60,23 @@ export function fmtLn(line0: number): string {
   return `Ln ${fmtInt(line0 + 1)}`;
 }
 
-/** Elapsed wall time of a run, in the sidebar's units (`0.9 s`). */
+/**
+ * Elapsed wall time of a run: `38 ms` below a second, `0.9 s` below a minute, `2 m 04 s` above.
+ *
+ * The millisecond band is not a nicety. Most profiles finish in tens of milliseconds, and one
+ * decimal of a second prints those as `0.0 s` — a counter that never started rather than a run that
+ * was fast. Every surface that shows elapsed time (the sidebar meta line, the report header, the
+ * in-flight progress card and the screen-reader announcement) reads it from here, so they cannot
+ * disagree about what a fast run looks like.
+ */
 export function fmtSecs(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '—';
-  return `${(ms / 1000).toFixed(1)} s`;
+  // Rounded BEFORE the band is chosen, so 999.7 ms is `1.0 s` and never `1000 ms`.
+  const whole = Math.round(ms);
+  if (whole < 1000) return `${whole} ms`;
+  if (whole < 60_000) return `${(whole / 1000).toFixed(1)} s`;
+  // The rounding happens on the whole duration for the same reason: 119.6 s is `2 m 00 s`, never
+  // `1 m 60 s`. Seconds are zero-padded so a ticking counter does not change width every second.
+  const secs = Math.round(whole / 1000);
+  return `${Math.floor(secs / 60)} m ${String(secs % 60).padStart(2, '0')} s`;
 }

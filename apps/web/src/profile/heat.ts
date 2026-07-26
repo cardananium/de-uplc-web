@@ -67,41 +67,52 @@ export function rulerColorId(bucket: HeatBucket): string {
 }
 
 /**
- * The ramp. One monotonic-in-lightness gradient that avoids the red/green axis and the semantic
- * blue: light = hotter is darker, dark = hotter is lighter. Hue arc amber → rose → magenta →
- * purple → indigo (a reversed magma), which runs along the blue↔yellow axis dichromats retain.
+ * The ramp. ONE warm family — amber → orange → rust → red → deep red — so the order reads as
+ * INTENSITY without a legend. The hue does not tour the wheel; it walks a short arc while the
+ * lightness does the ordering, which is the only arrangement a viewer can decode from a 4px bar
+ * without being told the key. Direction is set by the background, not by taste: contrast has to
+ * rise with the bucket, so on white hotter is DARKER (amber → oxblood) and on #0c1119 hotter is
+ * LIGHTER (ember → white-hot gold). The two ramps are the same family reflected, which is what any
+ * lightness-ordered scale must do across themes.
  *
  * Ratios in the comments are WCAG 2.x against the REAL editor backgrounds (monaco.ts
  * THEME_COLORS / THEME_COLORS_DARK) and against the caret-line composite — `renderLineHighlight:
  * 'gutter'` paints the highlight ACROSS the margin, so on the caret's line the lane sits on
- * #f6f6f6 / #151921, not on the editor background. `heat.test.ts` recomputes both.
+ * #f6f6f6 / #151921, not on the editor background. They are GENERATED (`npm run gen:heat` reads
+ * both surfaces out of monaco.ts and rewrites the comments); `heat.test.ts` recomputes them.
  *
- * Colour ORDERS the buckets under any vision model; lane WIDTH identifies them. A ΔE00 ≥ 12 floor
- * between neighbours is unreachable for any ordered ramp under protanopia, so the two channels
- * split the job rather than pretending one does it.
+ * Colour ORDERS the buckets under any vision model; lane WIDTH identifies them. Inside one warm
+ * family a dichromat sees six lightnesses of a single hue, so adjacent separation is bounded by
+ * the ladder itself: the worst adjacent pair is ΔE00 7.4 (light, deuteranopia) and 9.2 (dark) —
+ * against 7.5 / 9.4 for the ramp this replaced, which bought its wider pairs by crossing the
+ * blue↔yellow axis, i.e. by being the hue puzzle. Both floors are ~3× the 2.3 ΔE00 JND, and the
+ * bucket is carried independently by width.
  */
 export const HEAT_LIGHT: readonly string[] = [
-  '#968800', //  3.61:1 / 3.34:1
-  '#c14573', //  4.81:1 / 4.45:1   step +33%
-  '#913f76', //  6.61:1 / 6.12:1   step +37%
-  '#6f2b89', //  8.81:1 / 8.16:1   step +33%
-  '#231f96', // 12.30:1 / 11.38:1  step +40%
-  '#0f1d42', // 16.47:1 / 15.24:1  step +34%
+  '#aa8100', //  3.59:1 /  3.32:1
+  '#ad5d00', //  4.84:1 /  4.47:1   step +35%
+  '#a53917', //  6.57:1 /  6.08:1   step +36%
+  '#8e2015', //  8.87:1 /  8.21:1   step +35%
+  '#6d1416', // 11.92:1 / 11.03:1   step +34%
+  '#45080f', // 16.22:1 / 15.01:1   step +36%
 ];
 
 export const HEAT_DARK: readonly string[] = [
-  '#806a1b', //  3.60:1 / 3.35:1
-  '#c85d84', //  4.82:1 / 4.49:1   step +34%
-  '#f665a6', //  6.61:1 / 6.15:1   step +37%
-  '#e29eca', //  8.99:1 / 8.36:1   step +36%
-  '#d7c5ff', // 12.00:1 / 11.17:1  step +34%
-  '#efe4fe', // 15.50:1 / 14.42:1  step +29%
+  '#b14c4b', //  3.61:1 /  3.36:1
+  '#cf5f4d', //  4.86:1 /  4.52:1   step +35%
+  '#e07f3e', //  6.55:1 /  6.10:1   step +35%
+  '#ff990f', //  8.84:1 /  8.23:1   step +35%
+  '#f6c495', // 11.94:1 / 11.11:1   step +35%
+  '#ffea7e', // 15.61:1 / 14.52:1   step +31%
 ];
 
-/** The profiler's accent (button, pill, badge), mirrored here so the ramp and the accent are
- *  checked against each other in one place. Deliberately NOT an alias of an existing token:
- *  `--node-runtime` sits ΔE00 ≈ 3 from `--prof-heat-2` — one JND — so the accent would have been
- *  indistinguishable from the scale's own second bucket.
+/** The profiler's accent (button, pill, badge) — its IDENTITY, never a magnitude. Mirrored here so
+ *  the ramp and the accent are checked against each other in one place. The warm ramp moved it
+ *  from a collision to a separation: magenta now sits ΔE00 28.6 (light) / 29.7 (dark) from its
+ *  nearest bucket, where the previous ramp left it at 6.5 / 2.3 — the dark accent was literally one
+ *  JND from `--prof-heat-2`. That is why the ranked table's magnitude bar no longer borrows it
+ *  (see `.prof-bar`): the accent is now unambiguous, and spending it on a per-row quantity would
+ *  give it back two meanings.
  *  These two are written BY HAND in `tokens.css` (next to the other `--dbg-*` accents), not by the
  *  generator: it prints the six-value ramp only. */
 export const PROFILE_ACCENT = { light: '#8b2f88', dark: '#e79ad0' } as const;
@@ -112,10 +123,11 @@ export const PROFILE_BADGE_FG = { light: '#7a2977', dark: PROFILE_ACCENT.dark } 
  * `prefers-contrast: more` collapses COLOUR to three levels on purpose. The dynamic range is
  * capped by the background (21.0:1 on #ffffff, 18.9:1 on #0c1119), so a six-step ladder with the
  * floor raised to 4.5:1 separates WORSE under CVD than the base ramp. Width stays six-stepped and
- * carries the bucket by itself. Pairs are (0,1) (2,3) (4,5).
+ * carries the bucket by itself. Pairs are (0,1) (2,3) (4,5), and each level keeps the family's hue
+ * at its end of the arc so the three-level version still reads as the same scale.
  */
-export const HEAT_LIGHT_CONTRAST: readonly string[] = ['#756a00', '#756a00', '#791b73', '#791b73', '#040947', '#040947'];
-export const HEAT_DARK_CONTRAST: readonly string[] = ['#a3881d', '#a3881d', '#f59ec2', '#f59ec2', '#fae0ff', '#fae0ff'];
+export const HEAT_LIGHT_CONTRAST: readonly string[] = ['#925e00', '#925e00', '#871d07', '#871d07', '#300205', '#300205'];
+export const HEAT_DARK_CONTRAST: readonly string[] = ['#fa4a37', '#fa4a37', '#fca35b', '#fca35b', '#ffe6ab', '#ffe6ab'];
 
 // ── Ruler marks ────────────────────────────────────────────────────────────────────────────────
 

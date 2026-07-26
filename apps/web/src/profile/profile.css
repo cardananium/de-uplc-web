@@ -1,13 +1,16 @@
 /* Profiler surfaces: the sidebar summary and the report tab.
    Everything here is `.prof-*`; the heat LANE (the editor's gutter bar) lives in term-editor.css
-   next to the other Monaco decoration classes. The two share the `--prof-c` / `--prof-w` pair on
-   purpose — same idea, one bar coloured by bucket — but in a table cell `--prof-w` is a PERCENTAGE
-   and both values are written inline, so the cell never inherits a lane width in px. */
+   next to the other Monaco decoration classes, and owns the `--prof-c` / `--prof-w` pair. The
+   table's own bar deliberately does NOT reuse them: it is one colour against a track (see
+   `.prof-bar`), so it writes `--prof-fill` and can never pick up a lane width in px. */
 
 /* ── sidebar panel ───────────────────────────────────────────────────────────────────────────── */
 
 .prof-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
 .prof-meta { color: var(--fg-dim); font-size: 11.5px; }
+/* `N steps · 0.9 s · exact, not sampled`. The separators are spaced by the line itself, so the
+   sidebar (a plain span) and the report header (a flex row) print the same thing — see RunMeta. */
+.prof-runmeta { display: inline-flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .prof-note {
   font-size: 11.5px; line-height: 1.5; color: var(--fg-muted);
 }
@@ -92,8 +95,19 @@
 /* The word that carries the "exact, not sampled" tooltip — dotted underline so it reads as one. */
 .prof-hint { border-bottom: 1px dotted var(--border-strong); cursor: help; }
 
-/* The two budget metrics side by side; each is the sidebar's own .budget-metric markup. */
-.prof-budgets { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 4px 22px; }
+/* The two budget metrics side by side; each is the sidebar's own .budget-metric markup, at the
+   sidebar's own width. NOT `1fr` tracks: on a 1600px screen a fluid grid stretched each card to
+   ~550px, which parked SPENT and its number half a card apart and turned the two headers into one
+   `SPENT | LIMIT | SPENT | LIMIT` row spanning the tab. A fixed basis keeps each card compact and
+   self-labelling, and they wrap to one per line before they shrink below the sidebar's width. */
+.prof-budgets { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+/* Bounded, but NOT tinted: `.budget-overspend` prints the spent value in --error-fg, which clears
+   AA on the header's own white (4.56:1) and misses it on any fill light enough to read as a card
+   (--surface-3 takes it to 4.10:1). The box is the border alone; the alarm keeps its contrast. */
+.prof-budgets > div {
+  flex: 0 1 300px; min-width: 236px;
+  padding: 4px 12px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius);
+}
 
 .prof-headline {
   display: flex; align-items: flex-start; gap: 6px;
@@ -183,14 +197,30 @@
 .prof-sub-col { color: var(--fg-muted); }
 .prof-id { color: var(--fg-dim); font-family: var(--font-mono); font-size: 11px; }
 .prof-num { font-family: var(--font-mono); }
-/* The proportional bar rides ON the cell: no extra DOM, impossible to desynchronise from the
-   number it sits under. `--prof-c` is the row's bucket colour, `--prof-w` its share in PERCENT —
-   both written inline, overriding whatever the lane classes mean by the same names. */
+/* The `% run` bar rides ON the cell: no extra DOM, impossible to desynchronise from the number it
+   sits under. TWO background layers — the fill over a full-width TRACK — because a bare 1px sliver
+   floating with nothing behind it reads as a rendering artefact, while the same sliver inside a
+   rail reads as "a small share of the run", which is exactly what it is. The track is the budget
+   meter's own track colour and the fill obeys the same `max(2px, …)` floor, so the smallest
+   readings in this table look like the smallest readings in the meters.
+   ONE colour for every row: the six-bucket ramp is the editor lane's language, where a bucket owns
+   a whole line — spending it again on a 3px bar would put two scales in one table and make a cold
+   row's bar nearly invisible, which is what made this look like dirt. The rail is inset to the
+   CONTENT box so it lines up with the digits above it instead of with the column's padding.
+   And that one colour is NEUTRAL, not --dbg-profile: the profiler's accent is its IDENTITY (the
+   button, the pill, the badge) and putting it on a per-row magnitude gives it a second meaning, in
+   a table that already sits next to the heat lane. --fg-muted clears the WCAG 1.4.11 3:1 graphical
+   floor against the rail in both themes (4.15:1 light, 4.51:1 dark), so the 2px floor a 0.6% row
+   gets is still a visible mark rather than a smudge. */
 .prof-bar {
-  background-image: linear-gradient(90deg, var(--prof-c) 0 var(--prof-w), transparent var(--prof-w));
+  background-image:
+    linear-gradient(var(--fg-muted) 0 0),
+    linear-gradient(color-mix(in srgb, var(--fg-dim) 30%, transparent) 0 0);
   background-repeat: no-repeat;
   background-position: left bottom;
-  background-size: 100% 3px;
+  background-size: var(--prof-fill, 0) 3px, 100% 3px;
+  background-origin: content-box;
+  background-clip: content-box;
 }
 .prof-approx { color: var(--warning); font-weight: 700; cursor: help; }
 

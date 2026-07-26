@@ -53,7 +53,10 @@ export function BuiltinsTable({ profile }: { profile: DebuggerTypes.Profile }) {
             <th scope="col" className="prof-th">{unit}</th>
             <th scope="col" className="prof-th">% run</th>
             <th scope="col" className="prof-th prof-drop">{metric === 'cpu' ? 'Mem' : 'CPU'}</th>
-            <th scope="col" className="prof-th">{unit}/call</th>
+            <th scope="col" className="prof-th"
+              title={`${unit} ÷ calls. On a group row that is the mean over the calls in it, weighted by how they actually fell across its builtins — a property of the mix, not of any one builtin.`}>
+              {unit}/call
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -72,9 +75,12 @@ export function BuiltinsTable({ profile }: { profile: DebuggerTypes.Profile }) {
                   <td className="prof-num">{fmtInt(metric === 'cpu' ? g.cpu : g.mem)}</td>
                   <td className="prof-num">{fmtPct(metric === 'cpu' ? g.cpu : g.mem, spent)}</td>
                   <td className="prof-num prof-sub-col prof-drop">{fmtInt(metric === 'cpu' ? g.mem : g.cpu)}</td>
-                  {/* A group has no per-call cost: averaging across different builtins is a number
-                      with no referent. */}
-                  <td className="prof-num">—</td>
+                  {/* Group cost ÷ group calls: the call-weighted mean cost of a call in this
+                      bucket. It is a property of the MIX, not of any one builtin — but that is the
+                      question a group row answers ("are these calls expensive, or are there just a
+                      lot of them?"), and a column of nothing in the default view answered none.
+                      Expand the group for the per-builtin figures the mean is made of. */}
+                  <td className="prof-num">{fmtPerHit(metric === 'cpu' ? g.cpu : g.mem, g.calls)}</td>
                 </tr>
                 {open[g.id] && g.rows.map((b) => <BuiltinRow key={b.name} builtin={b} metric={metric} spent={spent} child />)}
               </Fragment>
@@ -85,7 +91,9 @@ export function BuiltinsTable({ profile }: { profile: DebuggerTypes.Profile }) {
             <td className="prof-num">{fmtInt(metric === 'cpu' ? all.cpu : all.mem)}</td>
             <td className="prof-num">{fmtPct(metric === 'cpu' ? all.cpu : all.mem, spent)}</td>
             <td className="prof-num prof-drop">{fmtInt(metric === 'cpu' ? all.mem : all.cpu)}</td>
-            <td className="prof-num">—</td>
+            {/* Same mean over every builtin call in the run — the number each group row is measured
+                against. Machine steps below have no calls at all, so that one stays an em dash. */}
+            <td className="prof-num">{fmtPerHit(metric === 'cpu' ? all.cpu : all.mem, all.calls)}</td>
           </tr>
           {/* The accounting invariant, made visible: machine steps + builtins = the whole run. Both sides
               are counted independently, so a drift in the Rust accounting shows up here as two

@@ -239,14 +239,14 @@
    acceptable because the ruler is an overview channel where a single bucket is not read anyway. */
 @media (prefers-contrast: more) {
   :root {
-    --prof-heat-0: #756a00; --prof-heat-1: #756a00;  /*  5.50:1 on #ffffff · 5.09:1 on the caret line */
-    --prof-heat-2: #791b73; --prof-heat-3: #791b73;  /*  9.47:1 · 8.76:1 */
-    --prof-heat-4: #040947; --prof-heat-5: #040947;  /* 18.50:1 · 17.12:1 */
+    --prof-heat-0: #925e00; --prof-heat-1: #925e00;  /*  5.49:1 on #ffffff · 5.08:1 on the caret line */
+    --prof-heat-2: #871d07; --prof-heat-3: #871d07;  /*  9.51:1 · 8.80:1 */
+    --prof-heat-4: #300205; --prof-heat-5: #300205;  /* 18.48:1 · 17.10:1 */
   }
   :root[data-theme='dark'] {
-    --prof-heat-0: #a3881d; --prof-heat-1: #a3881d;  /*  5.49:1 on #0c1119 · 5.11:1 on the caret line */
-    --prof-heat-2: #f59ec2; --prof-heat-3: #f59ec2;  /*  9.51:1 · 8.85:1 */
-    --prof-heat-4: #fae0ff; --prof-heat-5: #fae0ff;  /* 15.47:1 · 14.39:1 */
+    --prof-heat-0: #fa4a37; --prof-heat-1: #fa4a37;  /*  5.50:1 on #0c1119 · 5.11:1 on the caret line */
+    --prof-heat-2: #fca35b; --prof-heat-3: #fca35b;  /*  9.49:1 · 8.83:1 */
+    --prof-heat-4: #ffe6ab; --prof-heat-5: #ffe6ab;  /* 15.46:1 · 14.38:1 */
   }
   /* The ring as a second background layer — the bar sits 1px inside a border-strong plate. */
   .prof-lane {

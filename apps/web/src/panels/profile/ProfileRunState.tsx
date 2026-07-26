@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { termIndexFor } from '@de-uplc/core';
 import { useStore, revealTermInEditor } from '../../store';
 import { useSettings } from '../../platform/settings';
@@ -55,13 +55,20 @@ export function OutcomePill({ outcome }: { outcome: Outcome }) {
   );
 }
 
-/** `1,284,955 steps · 0.9 s · exact, not sampled` — the line beside the pill. */
+/**
+ * `1,284,955 steps · 0.9 s · exact, not sampled` — the line beside the pill, on BOTH surfaces.
+ *
+ * It carries its own row (`.prof-runmeta`, an inline flex with a gap) rather than leaning on the
+ * parent's: the report's `.prof-title` is a flex row and spaced the separators for free, the
+ * sidebar's `.prof-meta` is a plain span and ran the same markup together as `5,428 steps·0.0 s·`.
+ * One component, one spacing, whatever it is dropped into.
+ */
 export function RunMeta() {
   const run = useStore((s) => s.profileRun);
   const profile = useStore((s) => s.profile);
   const steps = profile?.totals.steps ?? run?.steps ?? 0;
   return (
-    <>
+    <span className="prof-runmeta">
       <span>{fmtInt(steps)} steps</span>
       <span>·</span>
       <span>{fmtSecs(run?.elapsedMs ?? 0)}</span>
@@ -78,7 +85,7 @@ export function RunMeta() {
       >
         exact, not sampled
       </span>
-    </>
+    </span>
   );
 }
 
@@ -237,8 +244,14 @@ export function ProfileProgress() {
     ? profile?.totals.cpuLimit ?? budget?.exUnitsAvailable
     : profile?.totals.memLimit ?? budget?.memoryUnitsAvailable) ?? null;
   const raw = limit && limit > 0 ? (spent / limit) * 100 : undefined;
-  const over = raw !== undefined && raw > 100;
+  // `>= 100`, like BudgetMetric: a run sitting exactly on the declared limit has no headroom left,
+  // and the two surfaces must not disagree about when that stops being normal.
+  const over = raw !== undefined && raw >= 100;
   const pct = raw === undefined ? 0 : Math.min(100, raw);
+  // Same headroom language as BudgetMetric: neutral, warming over the second half of the budget.
+  // A run with no declared limit has `raw === undefined` and draws no meter at all, so mid-run
+  // there is nothing to colour — the `—` case never reaches this.
+  const warmth = raw === undefined ? 0 : Math.min(1, Math.max(0, (raw - 50) / 50));
 
   return (
     <div className="prof-progress">
@@ -246,13 +259,16 @@ export function ProfileProgress() {
         <>
           <div className="budget-meter-row">
             <div className="meter">
-              <div className={`meter-fill is-live${over ? ' danger' : ''}`} style={{ width: pct <= 0 ? '0' : `max(2px, ${pct}%)` }} />
+              <div
+                className={`meter-fill is-live${over ? ' danger' : ''}`}
+                style={{ width: pct <= 0 ? '0' : `max(2px, ${pct}%)`, '--meter-t': warmth } as CSSProperties}
+              />
             </div>
             <span className="meter-pct">{Math.round(raw)}%</span>
           </div>
           <div className="prof-meta" style={{ marginTop: 4 }}>
             {over
-              ? `over the declared ${metric === 'cpu' ? 'CPU' : 'memory'} limit · ${Math.round(raw)}%`
+              ? `${raw > 100 ? 'over' : 'at'} the declared ${metric === 'cpu' ? 'CPU' : 'memory'} limit · ${Math.round(raw)}%`
               : `of the declared ${metric === 'cpu' ? 'CPU' : 'memory'} limit`}
           </div>
         </>

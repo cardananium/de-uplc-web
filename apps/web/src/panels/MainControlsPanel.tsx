@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useStore } from '../store';
 import { Codicon } from '../components/Codicon';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -120,14 +120,22 @@ export function MainControlsPanel() {
  * two must not grow two visual languages.
  * `limit` is the engine's `*Available` field — the DECLARED ExUnits (a constant cap: a tx
  * redeemer's, or the ones a parts deep-link carried), NOT a remaining balance. So that value IS the
- * limit; usage = spent / limit and overspend is spent > limit. `null` means nothing declared any:
- * there is no denominator, so the row prints `—` and draws no meter at all.
+ * limit; usage = spent / limit and the alarm state is spent >= limit. `null` means nothing declared
+ * any: there is no denominator, so the row prints `—` and draws no meter at all.
+ *
+ * The fill is neutral while there is headroom and warms toward the limit (`--meter-t`, see
+ * `.meter-fill`), so the two cards of the report header speak one language instead of painting a
+ * nearly-exhausted CPU budget in a decorative green next to a Memory budget in alarm orange.
  */
 export function BudgetMetric({ label, spent, limit, loading }: {
   label: string; spent?: number; limit?: number | null; loading: boolean;
 }) {
   const has = typeof spent === 'number' && typeof limit === 'number';
-  const over = has && spent! > limit!;
+  // AT the limit is the same alarm as OVER it: 100.00% means the run has no headroom left and one
+  // more step fails on chain, which is the single most important thing this widget can say — and
+  // with a `>` test it looked exactly like a comfortable 87%. The `limit > 0` guard keeps a session
+  // that declares a zero budget (not a real limit) from painting every reading red.
+  const over = has && (limit! > 0 ? spent! >= limit! : spent! > limit!);
   const rawPct = has && limit! > 0 ? (spent! / limit!) * 100 : 0; // true ratio (can exceed 100 on overspend)
   const pct = Math.min(100, rawPct);                              // clamped for the bar fill only
   const pctLabel = loading || !has ? '—' : `${rawPct.toFixed(2)}%`;
@@ -137,8 +145,18 @@ export function BudgetMetric({ label, spent, limit, loading }: {
   // does not exist. While loading (or before the first reading) the bar stays, so the panel doesn't
   // reflow every time a run starts.
   const noLimit = !loading && typeof spent === 'number' && typeof limit !== 'number';
+  // How warm the fill is: neutral through the first half of the budget, then a straight ramp to
+  // the warm end at the limit (`.danger` takes over at/over it). The knee is HALF the declared
+  // budget because that is the point where "there is room" stops being the honest reading — and
+  // tying the colour to the fill LENGTH means the warm end only ever paints a long bar.
+  const warmth = loading || !has ? 0 : Math.min(1, Math.max(0, (rawPct - 50) / 50));
+  // Which of the two the tone means, in words — the colour is never the only carrier.
+  const alarm = !over ? undefined
+    : spent! > limit!
+      ? 'Over the declared limit — this script would fail on chain.'
+      : 'At the declared limit exactly — no headroom left.';
   return (
-    <div className={`budget-metric${over ? ' budget-overspend' : ''}`}>
+    <div className={`budget-metric${over ? ' budget-overspend' : ''}`} title={alarm}>
       <div className="budget-cols">
         <span className="bt-label">{label}</span>
         <span className="bt-spent">{loading ? '—' : fmt(spent)}</span>
@@ -148,7 +166,12 @@ export function BudgetMetric({ label, spent, limit, loading }: {
       </div>
       {!noLimit && (
         <div className="budget-meter-row">
-          <div className="meter"><div className={`meter-fill${over ? ' danger' : ''}`} style={{ width: fillWidth }} /></div>
+          <div className="meter">
+            <div
+              className={`meter-fill${over ? ' danger' : ''}`}
+              style={{ width: fillWidth, '--meter-t': warmth } as CSSProperties}
+            />
+          </div>
           <span className="meter-pct">{pctLabel}</span>
         </div>
       )}

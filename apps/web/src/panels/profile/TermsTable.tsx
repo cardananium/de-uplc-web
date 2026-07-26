@@ -4,7 +4,7 @@ import { Codicon } from '../../components/Codicon';
 import { EmptyState } from '../../components/EmptyState';
 import { SortHeader } from '../../components/SortHeader';
 import { fmtInt, fmtPct, fmtPerHit } from '../../profile/format';
-import { bucketOf, nodeLabel, NO_BUCKET } from '../../profile/heat';
+import { nodeLabel } from '../../profile/heat';
 import {
   fmtThreshold, isReturnDominated, metricWord, type DerivedReport, type SortDir, type SortKey,
 } from '../../profile/derive';
@@ -146,7 +146,6 @@ export function TermsTable({ derived, index, sortKey, sortDir, onSort, onFocusFi
       </thead>
       <tbody className="prof-rows">
         {rows.map(({ row, rank, cum }, i) => {
-          const bucket = bucketOf(row.self, index.total, row.hits);
           const share = index.total > 0 ? (row.self / index.total) * 100 : 0;
           const approx = isReturnDominated(row, attribution);
           const line = row.line;
@@ -178,10 +177,13 @@ export function TermsTable({ derived, index, sortKey, sortDir, onSort, onFocusFi
               <td className="prof-num">{fmtInt(row.hits)}</td>
               <td className="prof-num">{fmtPerHit(row.self, row.hits)}</td>
               {/* The proportional bar rides on the cell itself: no extra DOM, and it cannot fall out
-                  of step with the number printed on top of it. */}
+                  of step with the number printed on top of it. EVERY row draws the full-width
+                  track — that is what makes a 0.6% row read as a small share of the run instead of
+                  as a stray pixel — and `--prof-fill` carries the whole width expression so a row
+                  that cost nothing draws an empty rail rather than the 2px floor. */}
               <td
                 className="prof-num prof-bar"
-                style={bucket === NO_BUCKET ? undefined : ({ '--prof-c': `var(--prof-heat-${bucket})`, '--prof-w': `${Math.min(100, share)}%` } as CSSProperties)}
+                style={{ '--prof-fill': share > 0 ? `max(2px, ${Math.min(100, share)}%)` : '0px' } as CSSProperties}
               >
                 {fmtInt(row.self)}
                 <span className="prof-sub">{fmtPct(row.self, index.total)}</span>

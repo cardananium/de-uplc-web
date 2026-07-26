@@ -19,9 +19,17 @@
   --border-strong: rgba(16, 22, 30, 0.17);
   --disabled-fg: #8c959f;
   --error-fg: #d83a42;
-  /* Overspend-meter gradient: the left stop is darkened in light so it clears the WCAG 1.4.11 3:1
-     graphical floor on the white panel (the old #ff9b6a was ~2:1 — nearly invisible). */
-  --meter-danger-from: #ef5f33;
+  /* Overspend-meter gradient, and the WARM END of the ordinary fill (see .meter-fill), so a meter
+     that crosses its limit continues the colour it was already at instead of switching languages.
+     Being the fill's endpoint is what sets this value: the edge a meter is READ by is fill↔track,
+     and the mid-range mixes toward this token, so anything lighter drags the whole upper half under
+     the WCAG 1.4.11 3:1 floor against the track (#ef5f33 gave 2.24:1 at the limit and 2.59:1 at
+     87%, i.e. exactly where a budget meter matters). #e23000 is the highest-chroma same-hue value
+     that clears it: 3.06:1 on the track, 4.51:1 on the panel. */
+  --meter-danger-from: #e23000;
+  /* The fill while there is headroom. Neutral on purpose: green would say "fine" about a budget
+     that is 87% gone. 4.15:1 on the meter track (WCAG 1.4.11), so the bar is legible at 2px. */
+  --meter-cool: var(--fg-muted);
   --shadow: 0 1px 2px rgba(27, 31, 36, 0.05), 0 8px 24px rgba(27, 31, 36, 0.07);
   --shadow-lg: 0 16px 40px rgba(27, 31, 36, 0.18);
 
@@ -44,29 +52,32 @@
   --dbg-restart: #6e7781;
   --dbg-step: #4f6bed;
 
-  /* Profiler accent. NOT an alias of any existing token: the obvious candidate --node-runtime
-     (#bc4c00) sits ΔE00 ≈ 3 — one JND — from the heat ramp's own bucket 2, so the profiler's accent
-     would have been indistinguishable from part of its scale. The --prof-heat-* ramp itself is
-     GENERATED into this file from apps/web/src/profile/heat.ts (npm run gen:heat). */
+  /* Profiler IDENTITY accent — the button, the pill, the badge, and nothing that carries a
+     magnitude. NOT an alias of any existing token: the obvious candidate --node-runtime (#bc4c00)
+     is itself warm, and the heat ramp now owns the warm band. Magenta is what is left, and it is
+     now ΔE00 28.6 from the nearest heat bucket (it was 6.5 against the old magenta-ish ramp).
+     The --prof-heat-* ramp is GENERATED into this file from apps/web/src/profile/heat.ts. */
   --dbg-profile: #8b2f88;      /* 7.34:1 — ΔE00 23.6 from the nearest --dbg-* */
   --badge-profile-fg: #7a2977; /* 5.87:1 on the 16% badge tint over --bg */
 
   /* ── profiler heat ──────────────────────────────────────────────────────────────────────
-     One monotonic-in-lightness ramp (light: hotter = darker), off the red/green axis and off the
-     semantic blue. The two ratios are WCAG 2.x against the REAL editor background (monaco.ts
-     THEME_COLORS) and against the CARET LINE composite: renderLineHighlight: 'gutter' paints the
-     current-line highlight ACROSS the margin, so on that one line the lane sits on
+     ONE warm family — amber → orange → rust → red → deep red — monotone in lightness AND in
+     contrast, so the order reads as intensity without a legend. On white hotter is DARKER; the
+     dark theme mirrors it (hotter is lighter) because contrast must keep rising with the bucket.
+     The two ratios are WCAG 2.x against the REAL editor background (monaco.ts THEME_COLORS) and
+     against the CARET LINE composite: renderLineHighlight: 'gutter' paints the current-line
+     highlight ACROSS the margin, so on that one line the lane sits on
      editor.lineHighlightBackground, not on editor.background. Colour ORDERS the buckets under any
      vision model; the lane's width (4 → 14px, term-editor.css) IDENTIFIES them.
-     The six values below are GENERATED from apps/web/src/profile/heat.ts by `npm run gen:heat` —
-     hand edits are overwritten by the generator and fail heat.test.ts. */
+     The six values below AND their ratios are GENERATED from apps/web/src/profile/heat.ts by
+     `npm run gen:heat` — hand edits are overwritten by the generator and fail heat.test.ts. */
   /* gen:heat light */
-  --prof-heat-0: #968800; /* 3.61:1 / 3.34:1 */
-  --prof-heat-1: #c14573; /* 4.81:1 / 4.45:1   step +33% */
-  --prof-heat-2: #913f76; /* 6.61:1 / 6.12:1   step +37% */
-  --prof-heat-3: #6f2b89; /* 8.81:1 / 8.16:1   step +33% */
-  --prof-heat-4: #231f96; /* 12.30:1 / 11.38:1  step +40% */
-  --prof-heat-5: #0f1d42; /* 16.47:1 / 15.24:1  step +34% */
+  --prof-heat-0: #aa8100; /*  3.59:1 /  3.32:1 */
+  --prof-heat-1: #ad5d00; /*  4.84:1 /  4.47:1   step +35% */
+  --prof-heat-2: #a53917; /*  6.57:1 /  6.08:1   step +36% */
+  --prof-heat-3: #8e2015; /*  8.87:1 /  8.21:1   step +35% */
+  --prof-heat-4: #6d1416; /* 11.92:1 / 11.03:1   step +34% */
+  --prof-heat-5: #45080f; /* 16.22:1 / 15.01:1   step +36% */
   /* end gen:heat */
 
   /* node-tree icon tints, by LazyRef kind */
@@ -103,6 +114,7 @@
   --disabled-fg: #5b6673;
   --error-fg: #ff6b71;
   --meter-danger-from: #ff9b6a; /* keep the brighter peach on dark (already ~7.8:1) */
+  --meter-cool: var(--fg-muted); /* 4.51:1 on the dark meter track */
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 30px rgba(0, 0, 0, 0.34);
   --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
 
@@ -124,15 +136,16 @@
   --dbg-profile: #e79ad0;      /* 8.95:1 on the editor bg, 7.66:1 on --surface-2 */
   --badge-profile-fg: var(--dbg-profile);
 
-  /* Dark half of the heat ramp — hotter = LIGHTER, same hue arc, ratios against #0c1119 and the
+  /* Dark half of the heat ramp — the light half reflected: hotter = LIGHTER, so the ember red at
+     the cold end walks up through orange to a white-hot gold. Ratios against #0c1119 and the
      caret-line composite #151921. GENERATED, see the light block above. */
   /* gen:heat dark */
-  --prof-heat-0: #806a1b; /* 3.60:1 / 3.35:1 */
-  --prof-heat-1: #c85d84; /* 4.82:1 / 4.49:1   step +34% */
-  --prof-heat-2: #f665a6; /* 6.61:1 / 6.15:1   step +37% */
-  --prof-heat-3: #e29eca; /* 8.99:1 / 8.36:1   step +36% */
-  --prof-heat-4: #d7c5ff; /* 12.00:1 / 11.17:1  step +34% */
-  --prof-heat-5: #efe4fe; /* 15.50:1 / 14.42:1  step +29% */
+  --prof-heat-0: #b14c4b; /*  3.61:1 /  3.36:1 */
+  --prof-heat-1: #cf5f4d; /*  4.86:1 /  4.52:1   step +35% */
+  --prof-heat-2: #e07f3e; /*  6.55:1 /  6.10:1   step +35% */
+  --prof-heat-3: #ff990f; /*  8.84:1 /  8.23:1   step +35% */
+  --prof-heat-4: #f6c495; /* 11.94:1 / 11.11:1   step +35% */
+  --prof-heat-5: #ffea7e; /* 15.61:1 / 14.52:1   step +31% */
   /* end gen:heat */
 
   --node-state: #f5c46b;
@@ -356,15 +369,36 @@ select:disabled { color: var(--disabled-fg); }
 /* Inset hairline so the (empty) track is visible against the white panel — without it the track is
    ~1.26:1 on #fff and a partial meter reads as a floating stub with no "out of total" affordance. */
 .meter { flex: 1; height: 6px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg-dim) 30%, transparent); box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; }
-.meter-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-green), var(--accent)); transition: width 0.35s ease; }
+/* The fill says how much HEADROOM is left, in one language with .danger below it: neutral while
+   there is room, warming as it approaches the declared limit, alarm at or over it. `--meter-t` is
+   0 → 1 over the second half of the budget (BudgetMetric / ProfileProgress compute it), so the
+   warm colour only ever appears on a bar that is already long. Legibility is judged on the
+   fill↔TRACK edge, not the panel: that edge exists at every fill under 100%, and it is the edge the
+   meter is read by. Both endpoints of the mix therefore clear 3:1 on the track — --meter-cool
+   4.15:1, --meter-danger-from 3.06:1 — so every point on the ramp does.
+   It used to be --accent-green → --accent: a decorative gradient that painted a nearly exhausted
+   budget green on the left, next to a Memory card correctly drawn in orange→red. Green means
+   "fine" everywhere else in this UI, so it may not open a meter that is 88% spent. */
+.meter-fill {
+  height: 100%; border-radius: inherit; transition: width 0.35s ease;
+  /* Capped at 60% of the way to the alarm colour ON PURPOSE. Running the mix to 100% made a meter
+     with headroom look like one without: at 87.67% the fill was #c34a36, which the eye does not
+     separate from the .danger gradient below. The ordinary fill therefore stops at a muted brick
+     (#af5345 light / #d9a28d dark, 3.44:1 / 4.74:1 on the track), leaving the saturated end of the
+     ramp to mean one thing only — there is no headroom left. */
+  background: color-mix(in oklab, var(--meter-danger-from) calc(var(--meter-t, 0) * 60%), var(--meter-cool));
+}
+/* At/over the limit the ramp keeps going rather than switching vocabulary: the gradient STARTS on
+   the warm end the fill just reached and adds the red. */
 .meter-fill.danger { background: linear-gradient(90deg, var(--meter-danger-from), var(--error-fg)); }
 /* Live progress: at ~8 updates/s the 0.35s width transition never arrives and the bar rubber-bands,
    so a meter that is being driven by a running profile opts out of it. (Moving integers ARE the
    liveness indicator here — there is no separate animation to reduce.) */
 .meter-fill.is-live { transition: none; }
 .meter-pct { width: 48px; text-align: right; color: var(--fg-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-/* On overspend, alarm ONLY the label + the value that overran (Spent) — keep the Limit (which was
-   NOT exceeded) and the percentage in their normal tokens so the eye lands on the problem number. */
+/* At or over the limit, alarm ONLY the label + the value that reached it (Spent) — keep the Limit
+   and the percentage in their normal tokens so the eye lands on the problem number. Exactly 100%
+   wears this too: no headroom left is the same warning as none to begin with. */
 .budget-overspend .bt-label, .budget-overspend .bt-spent { color: var(--error-fg); }
 
 /* file-drop: the Transaction panel is itself the drop target (no separate box). */
