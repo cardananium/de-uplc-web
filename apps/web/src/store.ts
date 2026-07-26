@@ -5,6 +5,7 @@ import {
   ContextFillError,
   type IDebuggerEngine,
   type LazyKind,
+  type LoadProgress,
   createProviderResolver,
   serializeTerm,
   serializeTermUplc,
@@ -52,6 +53,15 @@ interface AppState {
   status: SessionState;
   loading: boolean;
   locked: boolean;
+  /** What the in-flight load is doing RIGHT NOW ("Fetching 8 UTXOs…"), or undefined when idle.
+   *  Most of it is narrated by the core manager through its progress sink — the steps with the
+   *  interesting durations are inside `fillContextData`, so guessing them from out here would be
+   *  fiction. Cleared in the same `finally` that clears `loading` / `locked`, on every path. */
+  loadingPhase?: string;
+  /** Bumped by `onFatalWorker`. The load indicators watch it because the promise they wrap can
+   *  never settle when the worker dies (Comlink has no reject path), so a flag armed under the
+   *  dead engine has to be told, not awaited. */
+  crashEpoch: number;
   // True when the live session was opened from a plain UPLC program (no transaction/redeemer/context).
   // Drives the session-aware UI gates that otherwise key off a concrete redeemer.
   scriptOnly: boolean;
@@ -212,6 +222,21 @@ let profileToken = 0;
  * matrix + the user's `clearProfile`), each time in the SAME synchronous block as that site's
  * existing `set()` and next to a `profileCancel = true`.
  */
+/**
+ * The load phases the STORE owns — the ones that happen on this side of the manager. Everything
+ * between them (parse → network → UTXOs → params → engine) is narrated by `LOAD_PHASE` in core.
+ *
+ * `engine` is the phase every load opens on and the honest description of the gap before the
+ * manager says anything: on a cold start `ensureManager()` spawns the worker and instantiates the
+ * WASM module, which is by far the longest step of a first load.
+ */
+const PHASE = {
+  engine: 'Starting the engine…',
+  redeemers: 'Reading redeemers…',
+  term: 'Rendering the term…',
+  inspectors: 'Reading machine state…',
+} as const;
+
 const PROFILE_RESET = {
   profile: undefined, profileIndex: undefined, profileOutcome: undefined,
   profileSelected: undefined, profileStatus: 'idle', profileRunnerLive: false,
@@ -317,6 +342,12 @@ export const useStore = create<AppState>((set, get) => {
       if (gen !== sessionGeneration) return; // session swapped under us
       if (term) {
         currentTerm = term;
+        // `renderTerm` is synchronous and, on a large term, blocks the main thread for hundreds of
+        // milliseconds — long enough that the loading indicator's delay timer cannot fire and the
+        // spinner would only paint AFTER the work it describes. One frame lets React commit it
+        // first, which is the whole reason the phase says `Rendering the term…`.
+        await new Promise(requestAnimationFrame);
+        if (gen !== sessionGeneration) return;
         const { text, locations, hints } = renderTerm(term);
         termEpoch += 1;
         set((s) => ({ termText: text, termLocations: locations, termHints: hints, profileStale: staleFor(s.profileTermEpoch) }));
@@ -376,10 +407,12 @@ export const useStore = create<AppState>((set, get) => {
     try { handle?.dispose(); } catch { /* ignore */ }
     manager = undefined; handle = undefined; session = undefined; currentTerm = undefined; bareProgram = undefined; bareParts = undefined; txContent = undefined;
     sessionGeneration += 1;
-    set({
+    set((prev) => ({
+      // Every load indicator in the UI is armed against this counter — see `crashEpoch`.
+      crashEpoch: prev.crashEpoch + 1,
       ...PROFILE_RESET,
       profileRun: undefined, profileError: undefined,
-      status: 'empty', loading: false, locked: false, scriptOnly: false, scriptHasContext: false, finalStatus: undefined,
+      status: 'empty', loading: false, locked: false, loadingPhase: undefined, scriptOnly: false, scriptHasContext: false, finalStatus: undefined,
       budget: undefined, currentTermId: undefined,
       // Drop every session-derived field so the screen collapses to a clean crashed state instead of
       // showing a populated-but-dead Session panel / stale term that contradicts the crash banner.
@@ -388,16 +421,20 @@ export const useStore = create<AppState>((set, get) => {
       machineStateLazy: undefined, contextsLazy: [], currentEnvLazy: undefined,
       breakpoints: [],
       error: CRASH_MSG, errorTone: 'crash',
-    });
+    }));
     toast.error(CRASH_MSG);
   };
+
+  // The manager's load phases land in `loadingPhase` verbatim; the indicator renders the latest
+  // string. Writing on every step is free — zustand only notifies the components that select it.
+  const progress: LoadProgress = (phase) => set({ loadingPhase: phase });
 
   const ensureManager = (): DebuggerManager => {
     if (!manager) {
       const worker = new Worker(new URL('./engine/engine.worker.ts', import.meta.url), { type: 'module' });
       handle = connectEngine(worker, onFatalWorker);
       const providers = createProviderResolver(settingsStore, handle.refScriptResolver);
-      manager = new DebuggerManager(handle.engine, { providers, networkPrompt, events });
+      manager = new DebuggerManager(handle.engine, { providers, networkPrompt, events, progress });
     }
     return manager;
   };
@@ -512,6 +549,7 @@ export const useStore = create<AppState>((set, get) => {
   return {
     status: 'empty',
     loading: false,
+    crashEpoch: 0,
     locked: false,
     scriptOnly: false,
     scriptHasContext: false,
@@ -539,7 +577,7 @@ export const useStore = create<AppState>((set, get) => {
       bareProgram = undefined; bareParts = undefined; txContent = undefined; // switching back to transaction mode
       set({
         ...PROFILE_RESET,
-        loading: true, locked: true, scriptOnly: false, scriptHasContext: false, fileName, error: undefined, errorTone: undefined, finalStatus: undefined,
+        loading: true, locked: true, loadingPhase: PHASE.engine, scriptOnly: false, scriptHasContext: false, fileName, error: undefined, errorTone: undefined, finalStatus: undefined,
         budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
         machineStateLazy: undefined, contextsLazy: [], currentEnvLazy: undefined,
         termText: undefined, termLocations: [], termHints: [],
@@ -556,6 +594,7 @@ export const useStore = create<AppState>((set, get) => {
         // from Koios) so the link is self-contained and reopens with no network; fall back to the
         // raw content if the manager didn't retain a resolved context.
         txContent = mgr.getResolvedContextJson() ?? content;
+        set({ loadingPhase: PHASE.redeemers });
         const [redeemers, txId] = await Promise.all([mgr.getRedeemers(), mgr.getTransactionId()]);
         set({
           status: 'stopped', redeemers, txId,
@@ -574,7 +613,9 @@ export const useStore = create<AppState>((set, get) => {
           toast.error(`Failed to load transaction: ${error}${hint}`);
         }
       } finally {
-        set({ loading: false, locked: false });
+        // Every exit clears the indicator — success, failure, AND the quietly-reset
+        // network-cancelled path above, which returns through here like any other throw.
+        set({ loading: false, locked: false, loadingPhase: undefined });
       }
     },
 
@@ -585,7 +626,7 @@ export const useStore = create<AppState>((set, get) => {
       bareParts = undefined; txContent = undefined; // plain-program mode, not parts/tx mode
       set({
         ...PROFILE_RESET,
-        loading: true, locked: true, scriptOnly: true, scriptHasContext: false,
+        loading: true, locked: true, loadingPhase: PHASE.engine, scriptOnly: true, scriptHasContext: false,
         fileName: undefined, txId: undefined, redeemers: [], currentRedeemer: undefined,
         error: undefined, errorTone: undefined, finalStatus: undefined,
         budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
@@ -601,10 +642,15 @@ export const useStore = create<AppState>((set, get) => {
         bareProgram = { src: programSrc, lang: language };
         session = await mgr.openProgram(programSrc, language); sessionGeneration += 1;
         await syncBreakpoints();
-        await loadTermForSession();
+        set({ loadingPhase: PHASE.term });
+        // Identity BEFORE the term: these are three cheap engine reads that do not depend on it,
+        // while `loadTermForSession` can block for hundreds of milliseconds on a large script. Asking
+        // first fills the Session panel (hash, purpose, language) while the term is still rendering.
         const [scriptHash, scriptPurpose, plutusLang] = await Promise.all([
           session.getScriptHash(), session.getScriptPurpose(), session.getPlutusLanguageVersion(),
         ]);
+        await loadTermForSession();
+        set({ loadingPhase: PHASE.inspectors });
         set({
           // Hex input hashes to the real on-chain hash; UPLC TEXT has no canonical bytes, so the
           // engine returns "" (there is nothing honest to hash) and the panel shows "—".
@@ -619,7 +665,7 @@ export const useStore = create<AppState>((set, get) => {
         set({ status: 'empty', scriptOnly: false, scriptHasContext: false, error, errorTone: 'load' });
         toast.error(`Failed to load program: ${error}`);
       } finally {
-        set({ loading: false, locked: false });
+        set({ loading: false, locked: false, loadingPhase: undefined });
       }
     },
 
@@ -630,7 +676,7 @@ export const useStore = create<AppState>((set, get) => {
       bareProgram = undefined; txContent = undefined;
       set({
         ...PROFILE_RESET,
-        loading: true, locked: true, scriptOnly: true, scriptHasContext: !!parts.context,
+        loading: true, locked: true, loadingPhase: PHASE.engine, scriptOnly: true, scriptHasContext: !!parts.context,
         fileName: undefined, txId: undefined, redeemers: [], currentRedeemer: undefined,
         error: undefined, errorTone: undefined, finalStatus: undefined,
         budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
@@ -647,10 +693,15 @@ export const useStore = create<AppState>((set, get) => {
         bareParts = configJson;
         session = await mgr.openProgramParts(configJson); sessionGeneration += 1;
         await syncBreakpoints();
-        await loadTermForSession();
+        set({ loadingPhase: PHASE.term });
+        // Identity BEFORE the term: these are three cheap engine reads that do not depend on it,
+        // while `loadTermForSession` can block for hundreds of milliseconds on a large script. Asking
+        // first fills the Session panel (hash, purpose, language) while the term is still rendering.
         const [scriptHash, scriptPurpose, plutusLang] = await Promise.all([
           session.getScriptHash(), session.getScriptPurpose(), session.getPlutusLanguageVersion(),
         ]);
+        await loadTermForSession();
+        set({ loadingPhase: PHASE.inspectors });
         set({
           // Both are derived from what the link already carried — the script bytes + language for
           // the hash, the context (or the link's own `purpose`) for the purpose — so a parts
@@ -666,7 +717,7 @@ export const useStore = create<AppState>((set, get) => {
         set({ status: 'empty', scriptOnly: false, scriptHasContext: false, error, errorTone: 'load' });
         toast.error(`Failed to load script: ${error}`);
       } finally {
-        set({ loading: false, locked: false });
+        set({ loading: false, locked: false, loadingPhase: undefined });
       }
     },
 
@@ -691,23 +742,33 @@ export const useStore = create<AppState>((set, get) => {
       if (!manager) { toast.error('Engine not running — use Open transaction to recover.'); return; }
       // The profile of the PREVIOUS redeemer is meaningless for this one. Dropped in the same
       // synchronous block as the existing lock — before the generation bump below, no await between.
+      // Picking a redeemer is a LOAD too — it builds a session and re-serialises the whole term,
+      // which on a big script is seconds. It keeps its `locked`-only shape (the input panel stays
+      // usable is not the point: `busy` there already reads `locked`), and only gains the narration.
+      // No phase of our own: the engine is already running (guarded above), and
+      // `initDebugSession` reports `Building the debug session…` on its first line.
       set({ ...PROFILE_RESET, locked: true });
       try {
         // Bump before the drain so a stale callback from the old run is dropped by isStaleRun().
         if (session) { sessionGeneration += 1; try { await session.stop(); } catch { /* ignore */ } }
         session = await manager.initDebugSession(redeemer); sessionGeneration += 1;
         await syncBreakpoints();
-        await loadTermForSession();
+        set({ loadingPhase: PHASE.term });
+        // Identity BEFORE the term: these are three cheap engine reads that do not depend on it,
+        // while `loadTermForSession` can block for hundreds of milliseconds on a large script. Asking
+        // first fills the Session panel (hash, purpose, language) while the term is still rendering.
         const [scriptHash, scriptPurpose, plutusLang] = await Promise.all([
           session.getScriptHash(), session.getScriptPurpose(), session.getPlutusLanguageVersion(),
         ]);
+        await loadTermForSession();
+        set({ loadingPhase: PHASE.inspectors });
         set({
           currentRedeemer: redeemer, scriptHash, scriptPurpose: scriptPurpose || undefined, plutusLang, status: 'stopped',
           error: undefined, errorTone: undefined, finalStatus: undefined, budget: undefined,
         });
         await pullInspectors();
       } finally {
-        set({ locked: false });
+        set({ locked: false, loadingPhase: undefined });
       }
     },
 

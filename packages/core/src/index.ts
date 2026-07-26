@@ -18,6 +18,7 @@ export type {
   NetworkChoice,
   RefScriptResolver,
   ProviderResolver,
+  LoadProgress,
   IDebuggerEngineEvents,
   IDebuggerEngineRuntime,
   DebuggerManagerEvents,
@@ -27,7 +28,7 @@ export type {
 export type { IDebuggerEngine } from './debugger/debugger-engine.interface';
 
 // Orchestration
-export { DebuggerManager, ContextFillError, type DebuggerManagerDeps, type ContextFillReason } from './debugger/debugger-manager';
+export { DebuggerManager, ContextFillError, LOAD_PHASE, type DebuggerManagerDeps, type ContextFillReason } from './debugger/debugger-manager';
 export { parseTransactionContext } from './debugger/parse-transaction-context';
 
 // Data providers

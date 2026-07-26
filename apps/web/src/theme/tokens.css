@@ -237,7 +237,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 /* content area (sidebar + editor) */
 /* overflow:hidden so a stray wide child (long hash, log line) can never add a horizontal scrollbar
    or shift the layout; long content wraps at source, the editor/sidebar scroll internally. */
-.app-content { grid-area: content; min-height: 0; min-width: 0; display: flex; flex-direction: column; padding: 12px; overflow: hidden; }
+/* `position: relative` so the deep-link launch overlay can cover exactly the workspace (and not
+   the titlebar/rail, which stay usable while a shared link opens). */
+.app-content { grid-area: content; position: relative; min-height: 0; min-width: 0; display: flex; flex-direction: column; padding: 12px; overflow: hidden; }
 .app-body { display: flex; gap: 12px; flex: 1 1 auto; min-height: 0; min-width: 0; }
 .app-sidebar { flex: 0 0 372px; overflow: hidden auto; min-height: 0; padding-right: 6px; }
 .app-sidebar > .panel { min-width: 0; }
@@ -401,6 +403,42 @@ select:disabled { color: var(--disabled-fg); }
    wears this too: no headroom left is the same warning as none to begin with. */
 .budget-overspend .bt-label, .budget-overspend .bt-spent { color: var(--error-fg); }
 
+/* ── loading indicator ────────────────────────────────────────────────────────────────────
+   One vocabulary for every load: the spinner replaces the glyph of the control that was pressed,
+   and this line — the live phase from the store ("Fetching 8 UTXOs…") — sits next to it. Empty
+   renders as no child nodes, so `:empty` collapses it and a row never reserves space for a
+   message it is not showing. */
+.busy-phase { color: var(--fg-muted); font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
+.busy-phase:empty { display: none; }
+
+/* Deep-link launch: no button was pressed, so the workspace itself is the affordance — otherwise
+   a shared link is an empty, idle-looking app for as long as the engine takes to boot. */
+/* The card stays MOUNTED so its live region is never inserted together with its first text; it is
+   emptied and `hidden` instead. A `display` rule beats the UA's `[hidden] { display: none }`, so
+   the attribute has to be honoured explicitly here — without this the scrim covers the workspace
+   permanently and swallows every click in it. */
+.launch-overlay[hidden] { display: none; }
+.launch-overlay {
+  position: absolute; inset: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+  /* A scrim rather than an opaque cover: what is behind is the app being prepared, not something
+     to hide. Both themes get it from --bg, so neither gets a grey wash of the other's page. */
+  background: color-mix(in srgb, var(--bg) 74%, transparent);
+  backdrop-filter: blur(2px);
+}
+.launch-card {
+  display: flex; align-items: flex-start; gap: 12px;
+  min-width: min(320px, 86vw); max-width: min(440px, 92vw);
+  padding: 16px 18px; border-radius: var(--radius-lg);
+  background: var(--surface-2); border: 1px solid var(--border); box-shadow: var(--shadow-lg);
+}
+.launch-card > .codicon { color: var(--accent); font-size: 16px; margin-top: 2px; flex: 0 0 auto; }
+.launch-text { min-width: 0; }
+.launch-title { font-weight: 600; font-size: 13.5px; }
+/* Hold the phase line's height even while it is empty, so the card doesn't grow a row (and jump)
+   the moment the first phase arrives — the one motion this indicator must not make. */
+.launch-card .busy-phase, .launch-card .busy-phase:empty { display: block; min-height: 1.45em; margin-top: 3px; }
+
 /* file-drop: the Transaction panel is itself the drop target (no separate box). */
 .panel-drop { border-color: var(--accent); background: var(--bg-subtle); }
 
@@ -554,4 +592,11 @@ code { background: var(--bg-subtle); padding: 1px 5px; border-radius: 4px; font-
     animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important; scroll-behavior: auto !important;
   }
+  /* Explicit for the codicon spinner. The blanket rule above already stops it, but it does so by
+     racing the animation to its end frame — say it outright instead. `BusySpinner` additionally
+     renders a STATIC ellipsis under this query (a spin glyph frozen mid-turn reads as a bug, not
+     as a non-animated affordance); this covers the spinners it doesn't own — the Running badge,
+     the profiling pill, "Building link…". */
+  .codicon-modifier-spin { animation: none !important; }
+  /* The scrim's blur is not motion; the overlay simply appears. Nothing else to reduce here. */
 }

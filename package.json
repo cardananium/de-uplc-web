@@ -18,12 +18,13 @@
     "dev": "vite --config apps/web/vite.config.ts",
     "prebuild:web": "node scripts/ensure-wasm.mjs",
     "build:web": "vite build --config apps/web/vite.config.ts",
-    "e2e": "node apps/web/e2e/m6-headless.mjs && node apps/web/e2e/lazy-headless.mjs && node apps/web/e2e/program-headless.mjs && node apps/web/e2e/context-headless.mjs && node apps/web/e2e/profile-headless.mjs",
+    "e2e": "node apps/web/e2e/m6-headless.mjs && node apps/web/e2e/lazy-headless.mjs && node apps/web/e2e/program-headless.mjs && node apps/web/e2e/context-headless.mjs && node apps/web/e2e/profile-headless.mjs && node apps/web/e2e/loading-headless.mjs",
     "e2e:m6": "node apps/web/e2e/m6-headless.mjs",
     "e2e:lazy": "node apps/web/e2e/lazy-headless.mjs",
     "e2e:program": "node apps/web/e2e/program-headless.mjs",
     "e2e:context": "node apps/web/e2e/context-headless.mjs",
     "e2e:profile": "node apps/web/e2e/profile-headless.mjs",
+    "e2e:loading": "node apps/web/e2e/loading-headless.mjs",
     "test": "vitest run"
   },
   "devDependencies": {

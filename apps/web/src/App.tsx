@@ -10,6 +10,7 @@ import { ShareModal } from './panels/ShareModal';
 import { WelcomeModal, shouldShowWelcome, markWelcomeSeen } from './panels/WelcomeModal';
 import { GitHubStars } from './components/GitHubStars';
 import { Codicon } from './components/Codicon';
+import { BusyPhase, BusySpinner, LaunchOverlay, useBusyControl, useBusyIndicator, type LaunchKind } from './components/Busy';
 import { DebuggerView } from './panels/DebuggerView';
 import { resolveUrlLaunch } from './url-launch';
 
@@ -29,6 +30,11 @@ export function App() {
   // on first render so a deep-link visit never flashes the welcome before the launch effect runs.
   const [welcomeOpen, setWelcomeOpen] = useState(shouldShowWelcome);
   useEffect(() => { if (welcomeOpen) markWelcomeSeen(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // A deep link is opening: which of the three kinds, or null when nothing is launching. Only the
+  // effect below ever sets it — a click has a button to spin, a URL has nothing at all.
+  const [launching, setLaunching] = useState<LaunchKind | null>(null);
+  const [sampleBusy, runSample] = useBusyControl();
+  const sampleShown = useBusyIndicator(sampleBusy);
 
   // Apply the resolved theme to <html> + Monaco; re-resolve when the OS theme changes on 'system'.
   useEffect(() => {
@@ -52,27 +58,34 @@ export function App() {
       const launch = await resolveUrlLaunch();
       if (!launch || cancelled) return;
       const s = useStore.getState();
-      if (launch.kind === 'program') void s.loadProgram(launch.script, launch.version);
-      else if (launch.kind === 'parts') void s.loadProgramParts(launch.parts);
-      else {
-        // Full transaction: load it, then reopen the shared redeemer (if any) once redeemers exist.
-        void (async () => {
-          await s.loadTransaction(launch.tx, 'shared-tx.json');
-          if (launch.redeemer && !cancelled) void useStore.getState().selectRedeemer(launch.redeemer);
-        })();
-      }
+      // The overlay is armed BEFORE the load starts and disarmed in a finally, so it covers the
+      // whole wait — including the redeemer session a shared transaction reopens on, which is
+      // itself a several-second step and part of "opening the link" as far as the user is concerned.
+      setLaunching(launch.kind);
+      void (async () => {
+        try {
+          if (launch.kind === 'program') await s.loadProgram(launch.script, launch.version);
+          else if (launch.kind === 'parts') await s.loadProgramParts(launch.parts);
+          else {
+            await s.loadTransaction(launch.tx, 'shared-tx.json');
+            if (launch.redeemer && !cancelled) await useStore.getState().selectRedeemer(launch.redeemer);
+          }
+        } finally {
+          setLaunching(null);
+        }
+      })();
     })();
     return () => { cancelled = true; };
   }, []);
 
-  const loadSample = async () => {
+  const loadSample = () => runSample(async () => {
     try {
       const txt = await (await fetch(`${import.meta.env.BASE_URL}sample/test-tx.json`)).text();
       await load(txt, 'test-tx.json');
     } catch (e) {
       toast.error(`Failed to load sample: ${e instanceof Error ? e.message : String(e)}`);
     }
-  };
+  });
 
   // Every key the term editor binds, in one place — this toast is the only surface that names them
   // all, so a key missing here is a key nobody finds.
@@ -95,7 +108,10 @@ export function App() {
       {/* top titlebar: title · load + transport · theme/settings */}
       <header className="app-titlebar">
         <h1 className="app-title">de-uplc — web</h1>
-        <button className="text-button" disabled={loading || locked} onClick={loadSample}>Load sample</button>
+        <button className="text-button" disabled={loading || locked} onClick={() => void loadSample()}>
+          {sampleShown ? <BusySpinner /> : <Codicon name="file-code" />} Load sample
+        </button>
+        <BusyPhase show={sampleShown} />
         <TransportControls />
         <div style={{ flex: 1 }} />
         {canShare && (
@@ -130,6 +146,7 @@ export function App() {
       <ErrorBoundary>
         <div className="app-content">
           <DebuggerView />
+          <LaunchOverlay kind={launching} />
         </div>
       </ErrorBoundary>
 

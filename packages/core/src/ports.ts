@@ -52,6 +52,15 @@ export interface NetworkPrompt {
  */
 export type RefScriptResolver = (txHex: string, outputIndex: number) => Promise<string> | string;
 
+/**
+ * Sink for short, human-readable LOAD PHASES ("Fetching 8 UTXOs…"), reported as each step of a
+ * load STARTS. A plain callback on purpose: core must stay free of DOM/React, and the only thing a
+ * host needs is the latest string (the web store keeps it in `loadingPhase` and renders it beside a
+ * spinner; a CLI could print it). Fire-and-forget — the return value is ignored and a sink must
+ * never throw, since a load is not allowed to fail because its narration did.
+ */
+export type LoadProgress = (phase: string) => void;
+
 /** Builds data providers from the current settings. */
 export interface ProviderResolver {
   /**

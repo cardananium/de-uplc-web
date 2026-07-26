@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useStore } from '../store';
 import { Codicon } from '../components/Codicon';
+import { BusyPhase, BusySpinner, useBusyControl, useBusyIndicator } from '../components/Busy';
 
 // Accept sets differ per mode: a transaction is JSON/CBOR; a bare program is UPLC text or compiled
 // Flat/CBOR hex (.plutus etc).
@@ -25,19 +26,27 @@ export function TransactionPanel() {
   const [lang, setLang] = useState('V3');
   const busy = loading || locked;
   const scriptMode = mode === 'script';
+  // One flag per CONTROL, not per panel: the spinner belongs in the thing that was pressed. A
+  // dropped file rides the Open-file flag — the drop target IS this panel, and that button is the
+  // affordance for the same "load a file" path.
+  const [fileBusy, runFile] = useBusyControl();
+  const [pasteBusy, runPaste] = useBusyControl();
+  const fileShown = useBusyIndicator(fileBusy);
+  const pasteShown = useBusyIndicator(pasteBusy);
+  const panelShown = fileShown || pasteShown;
 
   // A dropped/opened file is loaded according to the active tab.
-  const loadFile = async (file: File) => {
+  const loadFile = (file: File) => runFile(async () => {
     if (scriptMode) await loadProgram(await file.text(), lang);
     else await load(await file.text(), file.name);
-  };
+  });
 
-  const loadPaste = async () => {
+  const loadPaste = () => runPaste(async () => {
     const src = paste.trim();
     if (scriptMode) await loadProgram(src, lang);
     else await load(src, 'pasted');
     setPaste('');
-  };
+  });
 
   return (
     // Dropping a file anywhere on the panel loads it (per the active tab); the whole panel
@@ -69,7 +78,9 @@ export function TransactionPanel() {
 
       <div className="mc-row" style={{ marginTop: 10 }}>
         <button className="text-button" disabled={busy} onClick={() => inputRef.current?.click()}>
-          <Codicon name="folder-opened" /> Open file
+          {/* The spinner REPLACES the button's own glyph rather than joining it, so the row keeps
+              its width and nothing shifts under the pointer mid-load. */}
+          {fileShown ? <BusySpinner /> : <Codicon name="folder-opened" />} Open file
         </button>
         <input ref={inputRef} type="file" accept={scriptMode ? SCRIPT_ACCEPT : TX_ACCEPT} style={{ display: 'none' }}
           onChange={async (e) => { const f = e.target.files?.[0]; if (f) await loadFile(f); e.target.value = ''; }} />
@@ -81,9 +92,13 @@ export function TransactionPanel() {
             <option value="V1">Plutus V1</option>
           </select>
         )}
-        {loading && <span className="muted">Loading…</span>}
-        {!scriptMode && fileName && <span className="muted">{fileName}</span>}
-        {!scriptMode && txId && <span className="muted" title={txId}>txId {txId.slice(0, 12)}…</span>}
+        <BusyPhase show={fileShown} />
+        {/* What is loaded is stale as soon as a new load starts (the txId still belongs to the
+            PREVIOUS transaction until this one lands, and a failure clears both) — so while this
+            panel is showing an indicator, the identity stands down for it. Fast loads never reach
+            here, so the row does not flicker on the common path. */}
+        {!scriptMode && !panelShown && fileName && <span className="muted">{fileName}</span>}
+        {!scriptMode && !panelShown && txId && <span className="muted" title={txId}>txId {txId.slice(0, 12)}…</span>}
       </div>
 
       <textarea
@@ -95,10 +110,13 @@ export function TransactionPanel() {
         rows={4}
         style={{ width: '100%', marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 12 }}
       />
-      <button className="text-button" disabled={busy || paste.trim().length === 0}
-        onClick={() => void loadPaste()} style={{ marginTop: 8 }}>
-        <Codicon name="run-all" /> {scriptMode ? 'Load script' : 'Load transaction'}
-      </button>
+      <div className="mc-row" style={{ marginTop: 8 }}>
+        <button className="text-button" disabled={busy || paste.trim().length === 0}
+          onClick={() => void loadPaste()}>
+          {pasteShown ? <BusySpinner /> : <Codicon name="run-all" />} {scriptMode ? 'Load script' : 'Load transaction'}
+        </button>
+        <BusyPhase show={pasteShown} />
+      </div>
     </div>
   );
 }

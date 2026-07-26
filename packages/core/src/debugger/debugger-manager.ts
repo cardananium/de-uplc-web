@@ -9,6 +9,7 @@ import {
 import {
   DebuggerManagerEvents,
   IDebuggerEngineRuntime,
+  LoadProgress,
   NetworkPrompt,
   ProviderResolver,
 } from '../ports';
@@ -34,7 +35,32 @@ export interface DebuggerManagerDeps {
   networkPrompt: NetworkPrompt;
   /** Optional sink for breakpoint/finished/error events (the app store implements it). */
   events?: DebuggerManagerEvents;
+  /** Optional sink for the load phases below, so the host can say WHAT is slow, not just that
+   *  something is. Absent = the manager narrates nothing and behaves exactly as before. */
+  progress?: LoadProgress;
 }
+
+/**
+ * The load phases the manager narrates through `DebuggerManagerDeps.progress`, in one place so a
+ * host (and the tests) can name them without re-typing the strings.
+ *
+ * Each is reported when its step STARTS, and each names the step in the user's terms — a load is
+ * several operations with wildly different durations (a local parse is microseconds, a Koios
+ * round-trip is seconds), and "Loading…" is the one thing that says nothing about which of them the
+ * user is waiting on. The UTXO phase carries the COUNT because it is the only honest measure of the
+ * fetch's size available before it returns.
+ */
+export const LOAD_PHASE = {
+  parseTransaction: 'Parsing transaction…',
+  selectNetwork: 'Selecting the network…',
+  requiredUtxos: 'Reading transaction inputs…',
+  fetchUtxos: (n: number) => `Fetching ${n} UTXO${n === 1 ? '' : 's'}…`,
+  fetchParams: 'Fetching protocol parameters…',
+  openTransaction: 'Opening the transaction…',
+  debugSession: 'Building the debug session…',
+  openProgram: 'Loading the program…',
+  openParts: 'Loading the script…',
+} as const;
 
 /**
  * Platform-agnostic orchestration of a debugging session. Ported from the VS Code
@@ -58,10 +84,21 @@ export class DebuggerManager {
     this.attachEngineSubscriptions();
   }
 
+  /** Narrate one load step. Never lets a broken sink take the load down with it. */
+  private phase(text: string): void {
+    try {
+      this.deps.progress?.(text);
+    } catch {
+      /* a progress sink is decoration — its failure must not fail the load */
+    }
+  }
+
   public async openTransaction(content: string): Promise<void> {
+    this.phase(LOAD_PHASE.parseTransaction);
     const context = parseTransactionContext(content);
     const filledContext = await this.fillContextData(context);
     this.lastResolvedContext = filledContext;
+    this.phase(LOAD_PHASE.openTransaction);
     await this.engine.openTransaction(filledContext);
   }
 
@@ -105,6 +142,7 @@ export class DebuggerManager {
   }
 
   public async initDebugSession(redeemer: string): Promise<IDebuggerEngineRuntime> {
+    this.phase(LOAD_PHASE.debugSession);
     await this.engine.initDebugSession(redeemer);
     this.currentSession = this.engine;
     return this.engine;
@@ -115,6 +153,7 @@ export class DebuggerManager {
    * transaction, redeemer, datum or script context. Returns the live session, like initDebugSession.
    */
   public async openProgram(programSrc: string, language: string): Promise<IDebuggerEngineRuntime> {
+    this.phase(LOAD_PHASE.openProgram);
     await this.engine.openProgram(programSrc, language);
     this.currentSession = this.engine;
     return this.engine;
@@ -122,6 +161,7 @@ export class DebuggerManager {
 
   /** Open a session from a validator + manually-supplied Data args (PartsConfig JSON) — no tx. */
   public async openProgramParts(configJson: string): Promise<IDebuggerEngineRuntime> {
+    this.phase(LOAD_PHASE.openParts);
     await this.engine.openProgramParts(configJson);
     this.currentSession = this.engine;
     return this.engine;
@@ -154,6 +194,7 @@ export class DebuggerManager {
 
     // Ensure a network is selected before fetching any network-dependent data.
     if (!filledContext.network) {
+      this.phase(LOAD_PHASE.selectNetwork);
       const choice = await this.deps.networkPrompt.selectNetwork();
       if (!choice) {
         throw new ContextFillError('network-cancelled', 'Network selection is required to proceed.');
@@ -169,8 +210,12 @@ export class DebuggerManager {
     // Fill UTXOs if missing
     if (!filledContext.utxos) {
       try {
+        this.phase(LOAD_PHASE.requiredUtxos);
         const requiredUtxos = await this.engine.getRequiredUtxos(context.transaction);
         if (requiredUtxos.length > 0) {
+          // The count is known only here, and this is usually the slowest step of the whole load —
+          // so it is the one phase that carries a number.
+          this.phase(LOAD_PHASE.fetchUtxos(requiredUtxos.length));
           filledContext.utxos = await this.fetchUtxos(requiredUtxos, network, filledContext.customEndpoint);
 
           const fetchedUtxos = filledContext.utxos;
@@ -191,6 +236,7 @@ export class DebuggerManager {
     // Fill protocol parameters if missing
     if (!filledContext.protocolParams) {
       try {
+        this.phase(LOAD_PHASE.fetchParams);
         filledContext.protocolParams = await this.fetchProtocolParameters(network, filledContext.customEndpoint);
         if (!filledContext.protocolParams) {
           throw new Error('Protocol parameters are required but could not be fetched from any provider');

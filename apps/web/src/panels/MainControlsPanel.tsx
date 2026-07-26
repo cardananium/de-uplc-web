@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from 'react';
 import { useStore } from '../store';
 import { Codicon } from '../components/Codicon';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { BusyPhase, BusySpinner, useBusyControl, useBusyIndicator } from '../components/Busy';
 import {
   buttonStates, redeemerOptions, isConcreteRedeemer,
 } from './button-states';
@@ -25,13 +26,17 @@ export function MainControlsPanel() {
   const showContext = useStore((s) => s.showContext);
   const bs = buttonStates(status);
   const [pendingRedeemer, setPendingRedeemer] = useState<string | null>(null);
+  // Choosing a redeemer builds a session and re-serialises the term — on a big script that is a
+  // multi-second wait behind a control that used to do nothing visible but grey itself out.
+  const [selectBusy, runSelect] = useBusyControl();
+  const selectShown = useBusyIndicator(selectBusy);
 
   const onRedeemerChange = (next: string) => {
     if (next === currentRedeemer) return;
     if (isConcreteRedeemer(currentRedeemer)) {
       setPendingRedeemer(next); // changing an active session -> confirm
     } else {
-      void selectRedeemer(next); // first pick from "Choose redeemer" -> no confirm
+      void runSelect(() => selectRedeemer(next)); // first pick from "Choose redeemer" -> no confirm
     }
   };
 
@@ -53,6 +58,9 @@ export function MainControlsPanel() {
                 {redeemerOptions(redeemers).map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </label>
+            {/* No button was pressed here, so the spinner sits beside the control that WAS used. */}
+            {selectShown && <BusySpinner />}
+            <BusyPhase show={selectShown} />
           </div>
           <dl className="mc-kv">
             <dt>Script hash</dt>
@@ -105,7 +113,7 @@ export function MainControlsPanel() {
         open={pendingRedeemer !== null}
         title="Change redeemer?"
         message="The current debugging session will be stopped and reset."
-        onConfirm={() => { const next = pendingRedeemer; setPendingRedeemer(null); if (next) void selectRedeemer(next); }}
+        onConfirm={() => { const next = pendingRedeemer; setPendingRedeemer(null); if (next) void runSelect(() => selectRedeemer(next)); }}
         onCancel={() => setPendingRedeemer(null)}
       />
     </div>
