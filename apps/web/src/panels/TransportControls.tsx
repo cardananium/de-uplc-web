@@ -40,9 +40,10 @@ export function TransportControls() {
 
   // There is no honest "% done" (the total step count is unknowable in advance), so the progress
   // shown is cpu-so-far against the DECLARED cpu limit, and it is labelled that way in the panel.
-  // Without a redeemer there is no declared limit at all (`totals.cpuLimit === null`), so no percent
-  // is shown rather than one measured against the engine's default budget.
-  const cpuLimit = scriptOnly ? undefined : budget?.exUnitsAvailable;
+  // A session that declared none reports `exUnitsAvailable: null` — no percent then, rather than
+  // one measured against the engine's default budget. That is a property of the SESSION, not of
+  // scriptOnly: a parts deep-link carrying `exUnits` has a real limit and no redeemer.
+  const cpuLimit = budget?.exUnitsAvailable;
   const pct = profiling && profileRun && cpuLimit
     ? Math.min(100, Math.round((profileRun.cpu / cpuLimit) * 100))
     : undefined;

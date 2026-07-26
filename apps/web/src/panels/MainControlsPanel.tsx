@@ -19,6 +19,7 @@ export function MainControlsPanel() {
   const redeemers = useStore((s) => s.redeemers);
   const currentRedeemer = useStore((s) => s.currentRedeemer);
   const scriptHash = useStore((s) => s.scriptHash);
+  const scriptPurpose = useStore((s) => s.scriptPurpose);
   const plutusLang = useStore((s) => s.plutusLang);
   const selectRedeemer = useStore((s) => s.selectRedeemer);
   const showContext = useStore((s) => s.showContext);
@@ -58,19 +59,28 @@ export function MainControlsPanel() {
             <dd className="mono break" title={scriptHash}>{scriptHash ?? '—'}</dd>
             <dt>Language</dt>
             <dd>{plutusLang ?? '—'}</dd>
+            <dt>Purpose</dt>
+            <dd>{scriptPurpose ?? '—'}</dd>
           </dl>
         </div>
       )}
 
-      {/* ── scriptOnly mode: a plain UPLC program, no redeemer / no on-chain script hash ── */}
+      {/* ── scriptOnly mode: a plain UPLC program or a script + supplied args (a "parts" link) ──
+          Both identify the script when they can: the hash needs only the script bytes + language
+          (so hex input has one, UPLC text has none), and the purpose comes from the supplied
+          context or from the link's own `purpose` label. `—` means the session names none. */}
       {scriptOnly && (
         <div className="mc-section">
-          <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>Plain UPLC program — no transaction context.</div>
+          <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
+            {scriptHasContext ? 'UPLC script + supplied context — no transaction.' : 'Plain UPLC program — no transaction context.'}
+          </div>
           <dl className="mc-kv">
             <dt>Script hash</dt>
-            <dd className="mono break">{scriptHash ?? '—'}</dd>
+            <dd className="mono break" title={scriptHash}>{scriptHash ?? '—'}</dd>
             <dt>Language</dt>
             <dd>{plutusLang ?? '—'}</dd>
+            <dt>Purpose</dt>
+            <dd>{scriptPurpose ?? '—'}</dd>
           </dl>
         </div>
       )}
@@ -108,12 +118,13 @@ export function MainControlsPanel() {
  * Exported because the profiler reuses it VERBATIM (with `label="CPU"` / `"Memory"` instead of
  * `"Ex units"`): a profile's spent/limit/overspend is the same quantity as a live run's, and the
  * two must not grow two visual languages.
- * `limit` is the engine's `*Available` field — the redeemer's declared ExUnits (a constant
- * cap = `real_budget`), NOT a remaining balance. So that value IS the limit; usage = spent / limit
- * and overspend is spent > limit.
+ * `limit` is the engine's `*Available` field — the DECLARED ExUnits (a constant cap: a tx
+ * redeemer's, or the ones a parts deep-link carried), NOT a remaining balance. So that value IS the
+ * limit; usage = spent / limit and overspend is spent > limit. `null` means nothing declared any:
+ * there is no denominator, so the row prints `—` and draws no meter at all.
  */
 export function BudgetMetric({ label, spent, limit, loading }: {
-  label: string; spent?: number; limit?: number; loading: boolean;
+  label: string; spent?: number; limit?: number | null; loading: boolean;
 }) {
   const has = typeof spent === 'number' && typeof limit === 'number';
   const over = has && spent! > limit!;
@@ -122,25 +133,34 @@ export function BudgetMetric({ label, spent, limit, loading }: {
   const pctLabel = loading || !has ? '—' : `${rawPct.toFixed(2)}%`;
   // Give a tiny but real fill a minimum visible width so a 0.4% run isn't an empty bar.
   const fillWidth = loading || pct <= 0 ? '0' : `max(2px, ${pct}%)`;
+  // A reading with no declared limit gets no meter — an empty bar next to `—` implies a scale that
+  // does not exist. While loading (or before the first reading) the bar stays, so the panel doesn't
+  // reflow every time a run starts.
+  const noLimit = !loading && typeof spent === 'number' && typeof limit !== 'number';
   return (
     <div className={`budget-metric${over ? ' budget-overspend' : ''}`}>
       <div className="budget-cols">
         <span className="bt-label">{label}</span>
         <span className="bt-spent">{loading ? '—' : fmt(spent)}</span>
-        <span>{loading ? '—' : fmt(limit)}</span>
+        <span title={noLimit ? 'This session declares no ExUnits, so there is no limit to measure against.' : undefined}>
+          {loading || noLimit ? '—' : fmt(limit ?? undefined)}
+        </span>
       </div>
-      <div className="budget-meter-row">
-        <div className="meter"><div className={`meter-fill${over ? ' danger' : ''}`} style={{ width: fillWidth }} /></div>
-        <span className="meter-pct">{pctLabel}</span>
-      </div>
+      {!noLimit && (
+        <div className="budget-meter-row">
+          <div className="meter"><div className={`meter-fill${over ? ' danger' : ''}`} style={{ width: fillWidth }} /></div>
+          <span className="meter-pct">{pctLabel}</span>
+        </div>
+      )}
     </div>
   );
 }
 
 /**
  * Budget panel: ex-units / memory usage as Spent · Limit (full numbers) with a usage meter
- * each. The engine's `*Available` is the redeemer's declared ExUnits (the constant cap), so it
- * IS the Limit. Shown while running/paused and after a run completes; hidden otherwise.
+ * each. The engine's `*Available` is the session's DECLARED ExUnits (the constant cap), so it
+ * IS the Limit — and it is `null` when nothing declared any, which prints as `—` with no meter.
+ * Shown while running/paused and after a run completes; hidden otherwise.
  */
 export function BudgetPanel() {
   const status = useStore((s) => s.status);

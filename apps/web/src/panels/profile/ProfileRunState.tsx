@@ -228,13 +228,14 @@ export function ProfileProgress() {
   const cancelProfile = useStore((s) => s.cancelProfile);
   const profile = useStore((s) => s.profile);
   const budget = useStore((s) => s.budget);
-  const scriptOnly = useStore((s) => s.scriptOnly);
 
   const spent = metric === 'cpu' ? run?.cpu ?? 0 : run?.mem ?? 0;
-  // Before the first report lands, the declared limit is only known from the live session's budget.
+  // Before the first report lands, the declared limit is only known from the live session's budget —
+  // which is `null` for a session that declared none, so it answers the question by itself (no
+  // scriptOnly gate: a parts link carrying `exUnits` declares a limit and has no redeemer).
   const limit = (metric === 'cpu'
-    ? profile?.totals.cpuLimit ?? (scriptOnly ? null : budget?.exUnitsAvailable)
-    : profile?.totals.memLimit ?? (scriptOnly ? null : budget?.memoryUnitsAvailable)) ?? null;
+    ? profile?.totals.cpuLimit ?? budget?.exUnitsAvailable
+    : profile?.totals.memLimit ?? budget?.memoryUnitsAvailable) ?? null;
   const raw = limit && limit > 0 ? (spent / limit) * 100 : undefined;
   const over = raw !== undefined && raw > 100;
   const pct = raw === undefined ? 0 : Math.min(100, raw);
@@ -347,9 +348,9 @@ export function OpenReportButton() {
  * verbatim so spent/limit/overspend read the same everywhere — with the profiler's own labels
  * (`CPU` / `Memory`, not `Ex units`), because the metric toggle above it says CPU.
  *
- * Without a limit (a plain UPLC program or parts mode: `cpu_limit === null`) there is no meter at
- * all: the only alternative denominator is `ExBudget::default()`, a reference budget that has
- * nothing to do with this script's declared ExUnits.
+ * Without a declared limit (`cpu_limit === null` — a plain UPLC program, or a parts link that
+ * carried no `exUnits`) there is no meter at all: the only alternative denominator is
+ * `ExBudget::default()`, a reference budget that has nothing to do with this script.
  */
 export function ProfileBudget({ label, spent, limit }: { label: string; spent: number; limit?: number | null }) {
   if (typeof limit === 'number') return <BudgetMetric label={label} spent={spent} limit={limit} loading={false} />;
@@ -358,7 +359,7 @@ export function ProfileBudget({ label, spent, limit }: { label: string; spent: n
       <div className="budget-cols">
         <span className="bt-label">{label}</span>
         <span className="bt-spent">{fmtInt(spent)}</span>
-        <span title="No redeemer, so this session declares no ExUnits limit.">—</span>
+        <span title="This session declares no ExUnits, so there is no limit to measure against.">—</span>
       </div>
     </div>
   );

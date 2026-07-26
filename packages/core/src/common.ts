@@ -1,8 +1,11 @@
 export interface Budget {
     exUnitsSpent: number;
-    exUnitsAvailable: number;
+    /** The ExUnits DECLARED for the session (a tx redeemer's, or the ones a parts deep-link
+     *  carried), i.e. the limit spending is measured against — `null` when nothing declared any.
+     *  Render `null` as "no limit" (`—`): a percentage of an invented cap looks like a real one. */
+    exUnitsAvailable: number | null;
     memoryUnitsSpent: number;
-    memoryUnitsAvailable: number;
+    memoryUnitsAvailable: number | null;
 }
 
 export interface UtxoReference {

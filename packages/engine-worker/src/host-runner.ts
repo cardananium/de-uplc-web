@@ -108,6 +108,10 @@ export class WasmEngineHostRunner implements IDebuggerEngineRuntime, IDebuggerEn
     return this.api.getScriptHash();
   }
 
+  async getScriptPurpose(): Promise<string> {
+    return this.api.getScriptPurpose();
+  }
+
   async getLogs(): Promise<string[]> {
     if (this.isExecuting) return [];
     return decodeJson(await this.api.getLogs());

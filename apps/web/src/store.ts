@@ -29,7 +29,8 @@ export interface Breakpoint { id: number; active: boolean }
 
 /** A validator + manually-supplied Data args (the URL deep-link "parts" mode). Everything but
  *  `script` is optional; `redeemer`/`datum` are PlutusData CBOR hex; `context` is PlutusData CBOR
- *  hex OR a named ScriptContext JSON (leading `{`); `cost_models` = flat i64 list. */
+ *  hex OR a named ScriptContext JSON (leading `{`); `cost_models` = flat i64 list.
+ *  Serialized as-is into the engine's `PartsConfig`, so the field names are the engine's. */
 export interface ProgramParts {
   script: string;
   language: string;
@@ -37,6 +38,14 @@ export interface ProgramParts {
   redeemer?: string;
   datum?: string;
   cost_models?: number[];
+  /** The redeemer's DECLARED ExUnits, `[cpu, mem]`. Not derivable from anything else in a parts
+   *  link (they live in the tx's witness set), so a link that omits them gets a session with no
+   *  limit — the budget panel and the profile then print `—` instead of a share of a default cap. */
+  ex_units?: number[];
+  /** What the script is run for, free-form ("spend", "Spending #0"). Usually unnecessary — the
+   *  engine derives it from `context` — but it OVERRIDES the derived value when both are present,
+   *  and it is the only source for a link whose context is absent or not a ScriptContext. */
+  purpose?: string;
 }
 
 interface AppState {
@@ -54,6 +63,9 @@ interface AppState {
   redeemers: string[];
   currentRedeemer?: string;
   scriptHash?: string;
+  /** What the script is being run for ("Spending", "Minting", … or a parts link's own label).
+   *  Undefined when the session names none — a bare program, or a context that doesn't decode. */
+  scriptPurpose?: string;
   plutusLang?: string;
   budget?: Budget;
   currentTermId?: number;
@@ -371,7 +383,7 @@ export const useStore = create<AppState>((set, get) => {
       budget: undefined, currentTermId: undefined,
       // Drop every session-derived field so the screen collapses to a clean crashed state instead of
       // showing a populated-but-dead Session panel / stale term that contradicts the crash banner.
-      redeemers: [], currentRedeemer: undefined, scriptHash: undefined, plutusLang: undefined,
+      redeemers: [], currentRedeemer: undefined, scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
       termText: undefined, termLocations: [], termHints: [],
       machineStateLazy: undefined, contextsLazy: [], currentEnvLazy: undefined,
       breakpoints: [],
@@ -528,7 +540,7 @@ export const useStore = create<AppState>((set, get) => {
       set({
         ...PROFILE_RESET,
         loading: true, locked: true, scriptOnly: false, scriptHasContext: false, fileName, error: undefined, errorTone: undefined, finalStatus: undefined,
-        budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, plutusLang: undefined,
+        budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
         machineStateLazy: undefined, contextsLazy: [], currentEnvLazy: undefined,
         termText: undefined, termLocations: [], termHints: [],
         // A new script's term ids are unrelated to the previous one's — drop stale breakpoints
@@ -576,7 +588,7 @@ export const useStore = create<AppState>((set, get) => {
         loading: true, locked: true, scriptOnly: true, scriptHasContext: false,
         fileName: undefined, txId: undefined, redeemers: [], currentRedeemer: undefined,
         error: undefined, errorTone: undefined, finalStatus: undefined,
-        budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, plutusLang: undefined,
+        budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
         machineStateLazy: undefined, contextsLazy: [], currentEnvLazy: undefined,
         termText: undefined, termLocations: [], termHints: [],
         // A new script's term ids are unrelated to the previous one's — drop stale breakpoints
@@ -590,12 +602,13 @@ export const useStore = create<AppState>((set, get) => {
         session = await mgr.openProgram(programSrc, language); sessionGeneration += 1;
         await syncBreakpoints();
         await loadTermForSession();
-        const [scriptHash, plutusLang] = await Promise.all([
-          session.getScriptHash(), session.getPlutusLanguageVersion(),
+        const [scriptHash, scriptPurpose, plutusLang] = await Promise.all([
+          session.getScriptHash(), session.getScriptPurpose(), session.getPlutusLanguageVersion(),
         ]);
         set({
-          // a context-free program has no on-chain script hash (engine returns "") — show "—"
-          scriptHash: scriptHash || undefined, plutusLang, status: 'stopped',
+          // Hex input hashes to the real on-chain hash; UPLC TEXT has no canonical bytes, so the
+          // engine returns "" (there is nothing honest to hash) and the panel shows "—".
+          scriptHash: scriptHash || undefined, scriptPurpose: scriptPurpose || undefined, plutusLang, status: 'stopped',
           error: undefined, errorTone: undefined, finalStatus: undefined, budget: undefined,
         });
         await pullInspectors();
@@ -620,7 +633,7 @@ export const useStore = create<AppState>((set, get) => {
         loading: true, locked: true, scriptOnly: true, scriptHasContext: !!parts.context,
         fileName: undefined, txId: undefined, redeemers: [], currentRedeemer: undefined,
         error: undefined, errorTone: undefined, finalStatus: undefined,
-        budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, plutusLang: undefined,
+        budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
         machineStateLazy: undefined, contextsLazy: [], currentEnvLazy: undefined,
         termText: undefined, termLocations: [], termHints: [],
         // A new script's term ids are unrelated to the previous one's — drop stale breakpoints
@@ -635,11 +648,14 @@ export const useStore = create<AppState>((set, get) => {
         session = await mgr.openProgramParts(configJson); sessionGeneration += 1;
         await syncBreakpoints();
         await loadTermForSession();
-        const [scriptHash, plutusLang] = await Promise.all([
-          session.getScriptHash(), session.getPlutusLanguageVersion(),
+        const [scriptHash, scriptPurpose, plutusLang] = await Promise.all([
+          session.getScriptHash(), session.getScriptPurpose(), session.getPlutusLanguageVersion(),
         ]);
         set({
-          scriptHash: scriptHash || undefined, plutusLang, status: 'stopped',
+          // Both are derived from what the link already carried — the script bytes + language for
+          // the hash, the context (or the link's own `purpose`) for the purpose — so a parts
+          // session identifies its script instead of printing two dashes.
+          scriptHash: scriptHash || undefined, scriptPurpose: scriptPurpose || undefined, plutusLang, status: 'stopped',
           error: undefined, errorTone: undefined, finalStatus: undefined, budget: undefined,
         });
         await pullInspectors();
@@ -663,7 +679,7 @@ export const useStore = create<AppState>((set, get) => {
         set({
           ...PROFILE_RESET,
           currentRedeemer: redeemer, status: 'stopped',
-          scriptHash: undefined, plutusLang: undefined, budget: undefined, currentTermId: undefined,
+          scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined, budget: undefined, currentTermId: undefined,
           machineStateLazy: undefined, contextsLazy: [], currentEnvLazy: undefined,
           termText: undefined, termLocations: [], termHints: [],
           error: undefined, errorTone: undefined, finalStatus: undefined,
@@ -682,11 +698,11 @@ export const useStore = create<AppState>((set, get) => {
         session = await manager.initDebugSession(redeemer); sessionGeneration += 1;
         await syncBreakpoints();
         await loadTermForSession();
-        const [scriptHash, plutusLang] = await Promise.all([
-          session.getScriptHash(), session.getPlutusLanguageVersion(),
+        const [scriptHash, scriptPurpose, plutusLang] = await Promise.all([
+          session.getScriptHash(), session.getScriptPurpose(), session.getPlutusLanguageVersion(),
         ]);
         set({
-          currentRedeemer: redeemer, scriptHash, plutusLang, status: 'stopped',
+          currentRedeemer: redeemer, scriptHash, scriptPurpose: scriptPurpose || undefined, plutusLang, status: 'stopped',
           error: undefined, errorTone: undefined, finalStatus: undefined, budget: undefined,
         });
         await pullInspectors();

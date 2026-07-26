@@ -4,7 +4,11 @@
   "type": "object",
   "properties": {
     "exUnitsAvailable": {
-      "type": "integer",
+      "description": "The ExUnits DECLARED for this session (a tx redeemer's `ex_units`, or the `ex_units` of a\nparts deep-link), or `None` when nothing declared one. `None` means \"there is no limit to\nmeasure against\" — the host prints `—`. Never a stand-in default: a percentage of\n`ExBudget::default()` looks like a real budget while being unrelated to this script.",
+      "type": [
+        "integer",
+        "null"
+      ],
       "format": "int64"
     },
     "exUnitsSpent": {
@@ -12,7 +16,10 @@
       "format": "int64"
     },
     "memoryUnitsAvailable": {
-      "type": "integer",
+      "type": [
+        "integer",
+        "null"
+      ],
       "format": "int64"
     },
     "memoryUnitsSpent": {
@@ -22,8 +29,6 @@
   },
   "required": [
     "exUnitsSpent",
-    "exUnitsAvailable",
-    "memoryUnitsSpent",
-    "memoryUnitsAvailable"
+    "memoryUnitsSpent"
   ]
 }

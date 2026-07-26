@@ -18,7 +18,7 @@ export interface IDebuggerEngine {
      *  Leaves the session immediately ready to run (no initDebugSession step). */
     openProgram(programSrc: string, language: string): Promise<void>;
     /** Open a session from a validator + manually-supplied Data args (a PartsConfig JSON string:
-     *  { script, language, context?, redeemer?, datum?, cost_models? }) — no transaction. */
+     *  { script, language, context?, redeemer?, datum?, cost_models?, ex_units?, purpose? }) — no transaction. */
     openProgramParts(configJson: string): Promise<void>;
     getRedeemers(): Promise<string[]>;
     getTransactionId(): Promise<string>;
@@ -30,7 +30,14 @@ export interface IDebuggerEngine {
     /** The applied script context as CBOR hex (PlutusData), or "" for a context-free session. */
     getContextCbor(): Promise<string>;
     getPlutusLanguageVersion(): Promise<string | undefined>;
+    /** The on-chain script hash, or "" when the session has no canonical script bytes to hash
+     *  (a program given as UPLC text). Derived from the script bytes + language alone, so a parts
+     *  deep-link reports it without a transaction. */
     getScriptHash(): Promise<string>;
+    /** What the script is being run FOR — "Spending", "Minting", … derived from the script context
+     *  (typed in tx mode, decoded from the applied Data in parts mode), or the label a parts link
+     *  supplied itself. "" when neither source names one. */
+    getScriptPurpose(): Promise<string>;
     getLogs(): Promise<string[]>;
     getBudget(): Promise<Budget | undefined>;
     getScript(): Promise<Term | undefined>;

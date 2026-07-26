@@ -27,9 +27,19 @@ pub struct SessionController {
     redeemer: String,
     machine: Box<ManualMachine>,
     language: Language,
-    real_budget: ExBudget,
+    /// The ExUnits DECLARED for this session — a tx redeemer's `ex_units`, or the ones a parts
+    /// deep-link carried. `None` when nothing declared any (a bare program, or a parts link without
+    /// them): there is then no denominator at all, and the budget panel / profile say so instead of
+    /// quoting a share of `ExBudget::default()`, which is a generic reference budget with no
+    /// relationship to this script.
+    declared_budget: Option<ExBudget>,
     image_budget: ExBudget,
     script_hash: String,
+    /// What the script is being run FOR ("Spending", "Minting", … or a link-supplied label), or
+    /// `None` when nothing in this session names one. Resolved ONCE, at construction: the panel
+    /// asks for it exactly once per session, and re-deriving it per call would make a one-line UI
+    /// read walk the context Data again.
+    purpose: Option<String>,
     last_error: Option<String>,
     program_version: (usize, usize, usize),
     entry_term: Box<Term<NamedDeBruijn>>,
@@ -57,9 +67,24 @@ impl SessionController {
         raw_context_data: Option<PlutusData>,
         cost_model: CostModel,
         upper_bound_budget: ExBudget,
-        real_budget: ExBudget,
+        declared_budget: Option<ExBudget>,
         redeemer: String,
+        purpose_override: Option<String>,
     ) -> Result<Self, JsError> {
+        // The purpose the caller HANDED US wins: a parts deep-link's `purpose` field exists exactly
+        // for the contexts we cannot read (absent, or valid Data that isn't a ScriptContext), and its
+        // generator knew which redeemer this was while we are inferring. Blank counts as absent, so
+        // `purpose=` in a URL doesn't suppress a perfectly good derived value.
+        let purpose = purpose_override
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.trim().to_string())
+            .or_else(|| script_context.as_ref().map(|c| purpose_name(c).to_string()))
+            .or_else(|| {
+                raw_context_data
+                    .as_ref()
+                    .and_then(crate::script_context::from_plutus_data::script_purpose_name_from_data)
+                    .map(str::to_string)
+            });
         let program_version = program.version;
         let entry_term = Box::new(program.term);
         let machine = Box::new(ManualMachine::new(
@@ -78,9 +103,10 @@ impl SessionController {
 
         Ok(SessionController {
             script_hash,
+            purpose,
             machine,
             language,
-            real_budget,
+            declared_budget,
             image_budget: upper_bound_budget,
             last_error: None,
             program_version,
@@ -166,6 +192,14 @@ impl SessionController {
         Ok(self.script_hash.clone())
     }
 
+    /// What the script is being run for — `"Spending"`, `"Minting"`, … in tx mode and whenever a
+    /// parts-mode context decodes; a parts link's own `purpose` label when it carried one; `""`
+    /// (= unknown, the panel prints `—`) when neither source has anything. `""` rather than an
+    /// Option to match `get_script_hash`, whose "nothing to report" answer the host already maps.
+    pub fn get_script_purpose(&self) -> Result<String, JsError> {
+        Ok(self.purpose.clone().unwrap_or_default())
+    }
+
     pub fn get_machine_context(&self) -> Result<String, JsError> {
         let contexts = self.get_machine_context_inner()?;
         Ok(serde_json::to_string(&contexts)
@@ -216,15 +250,17 @@ impl SessionController {
     
     pub(crate) fn get_budget_inner(&self) -> Result<SerializableBudget, JsError> {
         let spent_budget = self.machine.ex_budget;
-        let real_budget = self.real_budget;
         let image_budget = self.image_budget.clone();
         let cpu_diff = image_budget.cpu - spent_budget.cpu;
         let mem_diff = image_budget.mem - spent_budget.mem;
         let budget = SerializableBudget {
             ex_units_spent: cpu_diff,
-            ex_units_available: real_budget.cpu,
+            // Only a session that was GIVEN a limit reports one. `image_budget` is the machine's
+            // cap (ExBudget::max(), so a script that overspends is still steppable), never a
+            // denominator to divide by.
+            ex_units_available: self.declared_budget.map(|b| b.cpu),
             memory_units_spent: mem_diff,
-            memory_units_available: real_budget.mem,
+            memory_units_available: self.declared_budget.map(|b| b.mem),
         };
         Ok(budget)
     }
@@ -332,13 +368,12 @@ impl SessionController {
         let runner = self.profile_runner.as_ref().ok_or_else(|| {
             DebuggerError::MachineError("No profile to report: call profile_start() first.".to_string())
         })?;
-        // Declared ExUnits exist only when this session came from a redeemer; without one there is
-        // no declared limit at all, and a percentage of ExBudget::default() would be a made-up
-        // denominator.
-        let (cpu_limit, mem_limit) = if self.redeemer.is_empty() {
-            (None, None)
-        } else {
-            (Some(self.real_budget.cpu), Some(self.real_budget.mem))
+        // Only what the caller DECLARED. A tx session takes it from the redeemer's ex_units and a
+        // parts deep-link may carry it explicitly; neither is derivable from the program, so a
+        // session without one reports no limit rather than a percentage of ExBudget::default().
+        let (cpu_limit, mem_limit) = match self.declared_budget {
+            Some(b) => (Some(b.cpu), Some(b.mem)),
+            None => (None, None),
         };
         let report = runner.report(&self.entry_term, cpu_limit, mem_limit);
         // Serialise into a PRE-SIZED buffer rather than `to_string`. A `String` that grows by
@@ -437,6 +472,27 @@ impl SessionController {
     }
 }
 
+
+/// The purpose name of a TYPED context (tx mode). V1/V2's `ScriptPurpose` is `ScriptInfo<()>` and
+/// V3's carries the datum, so one generic match covers both — and the names it produces are the
+/// same ones `script_purpose_name_from_data` reads out of raw context Data in parts mode.
+fn purpose_name(context: &ScriptContext) -> &'static str {
+    fn named<T>(info: &uplc::tx::script_context::ScriptInfo<T>) -> &'static str {
+        use uplc::tx::script_context::ScriptInfo;
+        match info {
+            ScriptInfo::Minting(..) => "Minting",
+            ScriptInfo::Spending(..) => "Spending",
+            ScriptInfo::Rewarding(..) => "Rewarding",
+            ScriptInfo::Certifying(..) => "Certifying",
+            ScriptInfo::Voting(..) => "Voting",
+            ScriptInfo::Proposing(..) => "Proposing",
+        }
+    }
+    match context {
+        ScriptContext::V1V2 { purpose, .. } => named(purpose.as_ref()),
+        ScriptContext::V3 { purpose, .. } => named(purpose.as_ref()),
+    }
+}
 
 fn collect_term_ids(term: &Term<NamedDeBruijn>, term_ids: &mut HashSet<i32>) {
     // First, collect the current term's ID

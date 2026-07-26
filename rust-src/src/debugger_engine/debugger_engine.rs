@@ -246,7 +246,9 @@ impl DebuggerEngine {
         let cost_model = self.get_const_model(&language)?;
         let (program, script_context) = self.build_program(redeemer, script, datum.as_ref())?;
         let upper_bound_budget = ExBudget::max();
-        let real_budget = ExBudget {
+        // The declared limit of a tx session: exactly what this redeemer's witness claims in
+        // `ex_units`. It is the only honest denominator for "how much of its budget did it use".
+        let declared_budget = ExBudget {
             mem: redeemer.ex_units.mem as i64,
             cpu: redeemer.ex_units.steps as i64,
         };
@@ -259,8 +261,9 @@ impl DebuggerEngine {
             None, // raw_context_data — tx mode has the typed ScriptContext above
             cost_model,
             upper_bound_budget,
-            real_budget,
+            Some(declared_budget),
             redeemer_str.to_string(),
+            None, // no purpose override in tx mode — the typed ScriptContext already names it
         )
     }
 
@@ -356,13 +359,31 @@ impl DebuggerEngine {
 }
 
 fn compute_script_hash(script: &PlutusScript) -> String {
-    use pallas_crypto::hash::Hasher;
-    let script_hash = match script {
-        PlutusScript::V1(script) => Hasher::<224>::hash_tagged(&script.0, 1),
-        PlutusScript::V2(script) => Hasher::<224>::hash_tagged(&script.0, 2),
-        PlutusScript::V3(script) => Hasher::<224>::hash_tagged(&script.0, 3),
+    let (language, bytes) = match script {
+        PlutusScript::V1(script) => (Language::PlutusV1, &script.0),
+        PlutusScript::V2(script) => (Language::PlutusV2, &script.0),
+        PlutusScript::V3(script) => (Language::PlutusV3, &script.0),
     };
-    hex::encode(script_hash)
+    script_hash_hex(&language, bytes)
+}
+
+/// The on-chain script hash: `blake2b-224(<language tag byte> ‖ script bytes)`, tag 1/2/3 for
+/// V1/V2/V3 — the ledger's rule, expressed by pallas' `hash_tagged`.
+///
+/// `script_bytes` must be the CANONICAL serialised script, i.e. the bytes the witness set carries
+/// as its CBOR bytestring payload: for the compiled scripts every toolchain emits that is the
+/// `.plutus` `cborHex` form `59xxxx…` (a CBOR bytestring whose content is the flat program), NOT
+/// the flat program alone. Hashing the flat bytes instead produces a perfectly plausible-looking
+/// digest for a script that does not exist on chain, so callers normalise first — see
+/// `decode_flat_program`, which hands back exactly these bytes for every wrapping it accepts.
+fn script_hash_hex(language: &Language, script_bytes: &[u8]) -> String {
+    use pallas_crypto::hash::Hasher;
+    let tag = match language {
+        Language::PlutusV1 => 1u8,
+        Language::PlutusV2 => 2,
+        Language::PlutusV3 => 3,
+    };
+    hex::encode(Hasher::<224>::hash_tagged(script_bytes, tag))
 }
 
 /// Map a UI-supplied language string ("V1"/"V2"/"V3", case-insensitive) to a Plutus `Language`,
@@ -378,7 +399,11 @@ fn parse_language(language: &str) -> Language {
 /// Parse a plain UPLC program from EITHER textual syntax (`(program 1.1.0 …)`) or hex of its
 /// (possibly double-) CBOR-wrapped flat encoding (the `.plutus` `cborHex` form). Used for the
 /// context-free "debug a bare script" flow — no transaction, redeemer, datum or script context.
-fn parse_program_any(src: &str) -> Result<Program<NamedDeBruijn>, JsError> {
+///
+/// The second element is the CANONICAL serialised script (what `script_hash_hex` wants), or `None`
+/// for textual input: text has no canonical bytes, and re-encoding it here would produce a
+/// confident-looking hash of OUR flat encoder's output rather than of any script on chain.
+fn parse_program_any(src: &str) -> Result<(Program<NamedDeBruijn>, Option<Vec<u8>>), JsError> {
     let trimmed = src.trim();
     if trimmed.is_empty() {
         return Err(DebuggerError::ProgramBuildError("Empty program source".to_string()).into());
@@ -387,9 +412,10 @@ fn parse_program_any(src: &str) -> Result<Program<NamedDeBruijn>, JsError> {
     if trimmed.starts_with('(') {
         let named = uplc::parser::program(trimmed)
             .map_err(|e| DebuggerError::ProgramBuildError(format!("UPLC parse error: {}", e)))?;
-        return named
+        let program = named
             .to_named_debruijn()
-            .map_err(|e| DebuggerError::ProgramBuildError(format!("name resolution failed: {:?}", e)).into());
+            .map_err(|e| DebuggerError::ProgramBuildError(format!("name resolution failed: {:?}", e)))?;
+        return Ok((program, None));
     }
     // Otherwise treat it as hex of the flat bytes (raw, single- or double-CBOR-wrapped).
     let bytes = hex::decode(trimmed).map_err(|_| {
@@ -397,29 +423,48 @@ fn parse_program_any(src: &str) -> Result<Program<NamedDeBruijn>, JsError> {
             "Program is neither UPLC text (starting with '(') nor valid hex.".to_string(),
         )
     })?;
-    decode_flat_program(&bytes)
+    decode_flat_program(&bytes).map(|(p, canonical)| (p, Some(canonical)))
+}
+
+/// Wrap raw flat bytes in a CBOR byte string — the missing layer that turns a raw-flat input into
+/// the canonical serialised script.
+fn cbor_wrap(flat: &[u8]) -> Vec<u8> {
+    let mut enc = pallas_codec::minicbor::Encoder::new(Vec::with_capacity(flat.len() + 9));
+    enc.bytes(flat).expect("writing to a Vec never fails");
+    enc.into_writer()
 }
 
 /// Decode a `Program<NamedDeBruijn>` from flat bytes, tolerating the common wrappings of a
 /// compiled script: single-CBOR (`cborHex` of flat), double-CBOR (aiken's `.plutus` envelope),
 /// or raw flat. CBOR forms are tried first since that is what `.plutus`/`PlutusScriptV*` carry.
-fn decode_flat_program(bytes: &[u8]) -> Result<Program<NamedDeBruijn>, JsError> {
-    // 1) single CBOR wrap: cbor(flat)
-    let mut buf = Vec::new();
-    if let Ok(p) = Program::<FakeNamedDeBruijn>::from_cbor(bytes, &mut buf) {
-        return Ok(p.into());
-    }
-    // 2) double CBOR wrap: cbor(cbor(flat)) — unwrap one byte-string layer, then from_cbor.
+///
+/// Also returns the CANONICAL form of the same script — single-CBOR-wrapped, which is what the
+/// ledger hashes — so the three accepted spellings of one script all hash alike. The normalisation
+/// is produced HERE, in the same branch that decided how the input was wrapped, because a second
+/// sniffing pass elsewhere could disagree with this one and hash a different script than it ran.
+fn decode_flat_program(bytes: &[u8]) -> Result<(Program<NamedDeBruijn>, Vec<u8>), JsError> {
+    // 1) double CBOR wrap: cbor(cbor(flat)) — strip the layer a witness set adds, so the inner
+    //    bytes ARE the canonical form. Tried FIRST because `from_cbor` unwraps exactly one layer
+    //    and then unflats whatever it finds: given a double-wrapped script it hands the still-
+    //    wrapped `59xxxx…` to the flat decoder, which reads the byte-string header as a version
+    //    triple and returns a nonsense program instead of an error. Requiring the INNER bytes to be
+    //    a byte string too (which `from_cbor(inner)` does) is what tells the two shapes apart: a
+    //    singly-wrapped script's content is a flat program starting `01 …`, never a CBOR wrapper.
     let mut decoder = pallas_codec::minicbor::Decoder::new(bytes);
     if let Ok(inner) = decoder.bytes() {
-        let mut buf2 = Vec::new();
-        if let Ok(p) = Program::<FakeNamedDeBruijn>::from_cbor(inner, &mut buf2) {
-            return Ok(p.into());
+        let mut buf = Vec::new();
+        if let Ok(p) = Program::<FakeNamedDeBruijn>::from_cbor(inner, &mut buf) {
+            return Ok((p.into(), inner.to_vec()));
         }
     }
-    // 3) raw flat (no CBOR wrapper).
+    // 2) single CBOR wrap: cbor(flat) — already canonical.
+    let mut buf = Vec::new();
+    if let Ok(p) = Program::<FakeNamedDeBruijn>::from_cbor(bytes, &mut buf) {
+        return Ok((p.into(), bytes.to_vec()));
+    }
+    // 3) raw flat (no CBOR wrapper) — add the byte-string header the canonical form carries.
     if let Ok(p) = Program::<FakeNamedDeBruijn>::from_flat(bytes) {
-        return Ok(p.into());
+        return Ok((p.into(), cbor_wrap(bytes)));
     }
     Err(DebuggerError::ProgramBuildError(
         "Failed to decode UPLC program from hex (tried CBOR, double-CBOR and raw flat).".to_string(),
@@ -430,28 +475,32 @@ fn decode_flat_program(bytes: &[u8]) -> Result<Program<NamedDeBruijn>, JsError> 
 /// Build a debug session directly from a plain UPLC program — NO transaction, redeemer, datum or
 /// script context. `program_src` is UPLC text or hex (see `parse_program_any`); `language` selects
 /// the builtins + cost model ("V1"/"V2"/"V3", default V3). The machine runs with an effectively
-/// unbounded budget (so you can step a script that would overspend on chain); the budget panel's
-/// "limit" is the standard per-script default for reference.
+/// unbounded budget (so you can step a script that would overspend on chain), and nothing declares
+/// a limit — the budget panel and the profile print `—` rather than a share of a made-up cap.
 #[wasm_bindgen]
 pub fn new_session_from_program(program_src: &str, language: &str) -> Result<SessionController, JsError> {
     crate::wasm_tools::init_panic_hook();
     let lang = parse_language(language);
-    let program = parse_program_any(program_src)?;
+    let (program, canonical) = parse_program_any(program_src)?;
     let cost_model = match lang {
         Language::PlutusV1 => CostModel::v1(),
         Language::PlutusV2 => CostModel::v2(),
         Language::PlutusV3 => CostModel::v3(),
     };
     SessionController::new(
-        String::new(), // no on-chain script hash for a context-free program
+        // The script hash needs nothing but these bytes and the language, so a hex-loaded program
+        // reports the same on-chain hash a transaction would. Text input has no canonical bytes:
+        // "" (= unknown, printed as `—`) is the truthful answer, not a hash of our re-encoding.
+        canonical.map_or_else(String::new, |bytes| script_hash_hex(&lang, &bytes)),
         lang,
         Box::new(program),
         None, // no script context
         None, // no raw context data
         cost_model,
-        ExBudget::max(),     // machine cap — don't budget-error while debugging
-        ExBudget::default(), // reference "limit" shown in the budget panel
-        String::new(),       // no redeemer
+        ExBudget::max(), // machine cap — don't budget-error while debugging
+        None,            // nothing declared ExUnits here, so there is no limit to report
+        String::new(),   // no redeemer
+        None,            // no context and no link field: nothing names a purpose
     )
 }
 
@@ -499,10 +548,59 @@ struct PartsConfig {
     /// Cost-model params for the script's language (flat i64 list). Omit → the built-in default model.
     #[serde(default)]
     cost_models: Option<Vec<i64>>,
+    /// The ExUnits the redeemer DECLARED, as the flat pair `[cpu, mem]` — the one thing a parts
+    /// link cannot derive from its own contents (they live in the tx's witness set). Omit → the
+    /// session reports no limit at all. Anything that isn't exactly two non-negative integers is
+    /// ignored (see `lenient_i64_list` / `declared_ex_units`).
+    #[serde(default, deserialize_with = "lenient_i64_list")]
+    ex_units: Option<Vec<i64>>,
     /// Protocol major version — selects builtin semantics (>= 11 = Van Rossem / PV11 UTF-8 string
     /// costing). Only consulted when `cost_models` is given. Default: VAN_ROSSEM (current mainnet).
     #[serde(default)]
     protocol_version: Option<u16>,
+    /// What the script is being run FOR, as a short free-form label ("spend", "Spending #0", …).
+    /// Optional, and normally unnecessary: the purpose is inside `context` and is derived from it.
+    /// It exists for the links that cannot be derived from — no context, or a context that is valid
+    /// PlutusData but not a ScriptContext — and it OVERRIDES the derived value when both exist,
+    /// because whoever minted the link knows which redeemer this was and we are only guessing.
+    /// Read leniently, for the same reason `ex_units` is: a generator that puts a number here must
+    /// lose the label, not the whole link.
+    #[serde(default, deserialize_with = "lenient_string")]
+    purpose: Option<String>,
+}
+
+/// A string field that ignores anything that isn't a string, instead of failing the config parse.
+fn lenient_string<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    use serde::Deserialize;
+    Ok(match Option::<serde_json::Value>::deserialize(d)? {
+        Some(serde_json::Value::String(s)) => Some(s),
+        _ => None,
+    })
+}
+
+/// Read a `[i64, …]` field WITHOUT letting a malformed one abort the whole config. The default
+/// `Vec<i64>` deserializer errors on the first non-integer element, which would turn a typo in a
+/// shared link into "the link doesn't open"; here any shape that isn't a clean list of integers
+/// simply becomes `None`.
+fn lenient_i64_list<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Vec<i64>>, D::Error> {
+    use serde::Deserialize;
+    let value = Option::<serde_json::Value>::deserialize(d)?;
+    Ok(match value {
+        Some(serde_json::Value::Array(items)) => {
+            items.iter().map(|x| x.as_i64()).collect::<Option<Vec<i64>>>()
+        }
+        _ => None,
+    })
+}
+
+/// The declared ExUnits of a parts session: exactly `[cpu, mem]`, both non-negative. Anything else
+/// is IGNORED — a wrong-length or negative pair means we don't know the limit, and inventing one
+/// (or refusing to open the link over it) are both worse than reporting no limit.
+fn declared_ex_units(ex_units: Option<&Vec<i64>>) -> Option<ExBudget> {
+    match ex_units.map(Vec::as_slice) {
+        Some(&[cpu, mem]) if cpu >= 0 && mem >= 0 => Some(ExBudget { mem, cpu }),
+        _ => None,
+    }
 }
 
 /// Build a debug session from a validator + manually-supplied Data arguments (NO transaction).
@@ -511,14 +609,19 @@ struct PartsConfig {
 /// `context` are present (V1/V2 spend = all three; V1/V2 other = redeemer + context; V3 = context
 /// only). The session has no typed `ScriptContext` (the context is applied as a Data constant, so it
 /// is still visible/steppable in the term). `cost_models`, when given, drives budget accounting;
-/// otherwise the built-in default model for the language is used. `config_json` is a `PartsConfig`.
+/// otherwise the built-in default model for the language is used. `ex_units`, when given, is the
+/// declared `[cpu, mem]` the budget panel and the profile measure against — without it the session
+/// declares no limit. `config_json` is a `PartsConfig`.
 #[wasm_bindgen]
 pub fn new_session_from_parts(config_json: &str) -> Result<SessionController, JsError> {
     crate::wasm_tools::init_panic_hook();
     let cfg: PartsConfig = serde_json::from_str(config_json)
         .map_err(|e| JsError::from_str(&format!("invalid parts config: {e}")))?;
     let lang = parse_language(&cfg.language);
-    let mut program = parse_program_any(&cfg.script)?;
+    let (mut program, canonical) = parse_program_any(&cfg.script)?;
+    // Hash the script BEFORE the args are applied: the on-chain hash is of the validator alone, and
+    // `apply_data` below deliberately builds a different program (the one being stepped).
+    let script_hash = canonical.map_or_else(String::new, |bytes| script_hash_hex(&lang, &bytes));
     if let Some(d) = &cfg.datum {
         program = program.apply_data(decode_plutus_data(d)?);
     }
@@ -549,14 +652,15 @@ pub fn new_session_from_parts(config_json: &str) -> Result<SessionController, Js
         },
     };
     SessionController::new(
-        String::new(),
+        script_hash,
         lang,
         Box::new(program),
         None,        // no typed ScriptContext
         raw_context, // raw context Data (rendered by "Show context")
         cost_model,
         ExBudget::max(),
-        ExBudget::default(),
+        declared_ex_units(cfg.ex_units.as_ref()), // whatever the link carried, or no limit at all
         String::new(),
+        cfg.purpose, // the link's override; absent → derived from the context, if it decodes
     )
 }

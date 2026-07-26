@@ -44,7 +44,7 @@ export function App() {
     return () => mq.removeEventListener('change', apply);
   }, [theme]);
 
-  // Debug deep-link: if the URL carries a `script` (± context/redeemer/datum/costModels), or a
+  // Debug deep-link: if the URL carries a `script` (± context/redeemer/datum/costModels/exUnits), or a
   // compressed `d` payload, open it in the debugger on first load. Runs once.
   useEffect(() => {
     let cancelled = false;

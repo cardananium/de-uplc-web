@@ -567,6 +567,49 @@ pub fn script_context_from_data(d: &PD) -> R<SerializableScriptContext> {
     }
 }
 
+/// The six script purposes, by constructor index. V1/V2's `ScriptPurpose` stops at 3 (Certifying)
+/// and V3's `ScriptInfo` adds Voting/Proposing, but the two agree on every index they share, so one
+/// table names both.
+const SCRIPT_PURPOSE_NAMES: [&str; 6] =
+    ["Minting", "Spending", "Rewarding", "Certifying", "Voting", "Proposing"];
+
+/// The purpose's NAME (`"Spending"`, `"Minting"`, …) read straight off a ScriptContext Data —
+/// without decoding the TxInfo sitting next to it. `None` when this isn't a ScriptContext shape.
+///
+/// The purpose is the LAST field of a `Constr 0 [tx_info, purpose]` (V1/V2) or
+/// `Constr 0 [tx_info, redeemer, script_info]` (V3), so reading it means looking at two constructor
+/// headers, while `script_context_from_data` walks every input, output and datum of the
+/// transaction. A UI row that just says "Spending" must not pay for that; "Show context" is where
+/// the full decode belongs.
+///
+/// Index 0 AND the arity are both required before anything is reported. Arity alone gates nothing:
+/// `Constr 3 [_, Constr 1 []]` is an unremarkable Aiken datum, and reading a purpose off it would
+/// make the UI assert "Spending" about a session that has no script purpose at all — a claim with
+/// nothing beside it for the reader to audit.
+pub fn script_purpose_name_from_data(d: &PD) -> Option<&'static str> {
+    // Matched by hand rather than through `as_constr`, which clones every field: the whole point of
+    // this function is to reach the last header without copying the TxInfo tree next to it.
+    let PD::Constr(c) = d else { return None };
+    // Same index derivation as `as_constr`, minus the clone: canonical `Constr 0` is tag 121, and
+    // the escape encoding is tag 102 with the index alongside.
+    let outer_idx = match c.tag {
+        102 => c.any_constructor?,
+        121..=127 => c.tag - 121,
+        1280..=1400 => c.tag - 1280 + 7,
+        _ => return None,
+    };
+    if outer_idx != 0 { return None; }
+    // 2 = V1/V2, 3 = V3. Anything else is not a ScriptContext, whatever else it may be.
+    let max_purpose = match c.fields.len() {
+        2 => 3, // V1/V2 has no Voting/Proposing — a 4 or 5 here means we misread the Data
+        3 => 5,
+        _ => return None,
+    };
+    let (purpose_idx, _) = as_constr(c.fields.iter().last()?).ok()?;
+    if purpose_idx > max_purpose { return None; }
+    SCRIPT_PURPOSE_NAMES.get(purpose_idx as usize).copied()
+}
+
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 // FORWARD: SerializableScriptContext -> PlutusData (lets a NAMED-JSON context be applied/round-
 // tripped, the symmetric inverse of the decoders above; mirrors uplc::to_plutus_data). The named

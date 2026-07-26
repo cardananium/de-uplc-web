@@ -11,10 +11,25 @@ import type { ProgramParts } from './store';
 //   redeemer    redeemer PlutusData CBOR hex
 //   datum       datum PlutusData CBOR hex (optional; V1/V2 spend)
 //   costModels  cost-model params for the version — comma-separated ints or a JSON array (optional)
-// Any of context/redeemer/datum/costModels present → "parts" mode (args applied to the script).
+//   exUnits     the redeemer's DECLARED ExUnits as `cpu,mem` (optional) — e.g. `exUnits=8177555,25305`
+//   purpose     what the script is run for, free-form and short (optional) — e.g. `purpose=spend`
+// Any of context/redeemer/datum/costModels/exUnits/purpose present → "parts" mode (args applied to
+// the script).
 // The compressed `d` form carries the same fields as a JSON object {script, v?, context?, redeemer?,
-// datum?, costModels?}; it lets a generator (e.g. cquisitor) hand off large scripts/contexts without
-// bumping into URL length limits. Plain params and `d` are mutually exclusive (d wins if both present).
+// datum?, costModels?, exUnits?, purpose?}; it lets a generator (e.g. cquisitor) hand off large
+// scripts/contexts without bumping into URL length limits. Plain params and `d` are mutually
+// exclusive (d wins if both present).
+//
+// `exUnits` exists because it is the one thing the link cannot reconstruct: the redeemer's Data
+// argument is carried above, but the units its witness declared live in the transaction. Without
+// them the session has no denominator and everything measured "of the limit" reads `—`; with a
+// wrong-looking pair we drop it rather than open with a made-up one. Absent → exactly the old
+// behaviour, so links minted before this param keep working.
+//
+// `purpose`, in contrast, is normally REDUNDANT: the ScriptPurpose sits inside `context` and the
+// engine derives it from there. It is here for the links that cannot be derived from — no context,
+// or a context that is valid PlutusData but not a ScriptContext — and it overrides the derived
+// value when both are present, because its generator knew the redeemer and we are inferring.
 
 export type UrlLaunch =
   | { kind: 'program'; script: string; version: string }
@@ -32,6 +47,9 @@ interface LaunchFields {
   redeemer?: string | null;
   datum?: string | null;
   cost_models?: number[];
+  /** `[cpu, mem]`, already validated by `parseExUnits` — never a raw list. */
+  ex_units?: number[];
+  purpose?: string | null;
 }
 
 function readParams(): URLSearchParams {
@@ -47,16 +65,55 @@ function readParams(): URLSearchParams {
   return params;
 }
 
+/** A flat int list, written either `1,2,3` or as a JSON array. Non-numbers are dropped. */
 function parseCostModels(raw: string | null): number[] | undefined {
   if (!raw) return undefined;
   const t = raw.trim();
   try {
     const arr: unknown[] = t.startsWith('[') ? JSON.parse(t) : t.split(',');
-    const nums = arr.map((x) => Number(typeof x === 'string' ? x.trim() : x)).filter((n) => Number.isFinite(n));
+    const nums = arr.map(Number).filter((n) => Number.isFinite(n));
     return nums.length ? nums : undefined;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The declared ExUnits, or undefined. Exactly two non-negative integers, cpu first — anything else
+ * is dropped, because "we don't know the limit" is the truthful reading of a malformed pair and the
+ * link still has to open. The engine re-checks this (it also accepts links we never minted).
+ *
+ * Arity is checked on the RAW elements, before anything is coerced or dropped: filtering first would
+ * turn `8177555,25305,junk` into a perfectly good-looking pair and invent a limit out of a typo.
+ * For the same reason only real numbers and numeric strings count — `Number(true)` is 1 and
+ * `Number(null)` is 0, and neither is a budget anyone declared.
+ *
+ * Both spellings are accepted in both forms: the documented shape is `exUnits=cpu,mem` in a query
+ * and `"exUnits": [cpu, mem]` in the compressed payload, but a generator that puts the comma
+ * string in the JSON loses nothing — it still has to resolve to exactly two integers.
+ */
+function parseExUnits(raw: unknown): number[] | undefined {
+  let arr: unknown[];
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (!t) return undefined;
+    try {
+      arr = t.startsWith('[') ? (JSON.parse(t) as unknown[]) : t.split(',');
+    } catch {
+      return undefined;
+    }
+  } else if (Array.isArray(raw)) {
+    arr = raw;
+  } else {
+    return undefined;
+  }
+  if (!Array.isArray(arr) || arr.length !== 2) return undefined;
+  const nums = arr.map((x) => {
+    if (typeof x === 'number') return x;
+    if (typeof x === 'string' && x.trim() !== '') return Number(x.trim());
+    return NaN;
+  });
+  return nums.every((n) => Number.isInteger(n) && n >= 0) ? nums : undefined;
 }
 
 /** Turn normalized fields into a launch (parts vs program). Returns null when there's no `script`. */
@@ -68,8 +125,14 @@ function launchFromFields(f: LaunchFields): UrlLaunch | null {
   const redeemer = f.redeemer || undefined;
   const datum = f.datum || undefined;
   const cost_models = f.cost_models?.length ? f.cost_models : undefined;
-  if (context || redeemer || datum || cost_models) {
-    return { kind: 'parts', parts: { script, language: version, context, redeemer, datum, cost_models } };
+  const ex_units = parseExUnits(f.ex_units);
+  // Trimmed, and blank counts as absent: `?purpose=` must not read as "this session has a purpose
+  // and it is the empty string", which would suppress the value derived from the context.
+  const purpose = f.purpose?.trim() || undefined;
+  // `exUnits` or `purpose` alone is enough to make this a parts launch: a bare program has nowhere
+  // to carry either, so routing it there would silently drop the field the link came for.
+  if (context || redeemer || datum || cost_models || ex_units || purpose) {
+    return { kind: 'parts', parts: { script, language: version, context, redeemer, datum, cost_models, ex_units, purpose } };
   }
   return { kind: 'program', script, version };
 }
@@ -84,6 +147,8 @@ export function parseUrlLaunch(): UrlLaunch | null {
     redeemer: p.get('redeemer'),
     datum: p.get('datum'),
     cost_models: parseCostModels(p.get('costModels') || p.get('cost_models')),
+    ex_units: parseExUnits(p.get('exUnits') ?? p.get('ex_units')),
+    purpose: p.get('purpose'),
   });
 }
 
@@ -116,18 +181,17 @@ export async function decodeCompressedLaunch(d: string): Promise<UrlLaunch | nul
     // Full-transaction launch (mutually exclusive with the script forms).
     const tx = str('tx');
     if (tx) return { kind: 'transaction', tx, redeemer: str('redeemer') };
-    const cm = Array.isArray(o.costModels)
-      ? (o.costModels as unknown[]).map(Number).filter((n) => Number.isFinite(n))
-      : Array.isArray(o.cost_models)
-        ? (o.cost_models as unknown[]).map(Number).filter((n) => Number.isFinite(n))
-        : undefined;
+    const ints = (k: string) =>
+      Array.isArray(o[k]) ? (o[k] as unknown[]).map(Number).filter((n) => Number.isFinite(n)) : undefined;
     return launchFromFields({
       script: str('script'),
       version: str('v') ?? str('version'),
       context: str('context'),
       redeemer: str('redeemer'),
       datum: str('datum'),
-      cost_models: cm,
+      cost_models: ints('costModels') ?? ints('cost_models'),
+      ex_units: parseExUnits(o.exUnits ?? o.ex_units),
+      purpose: str('purpose'),
     });
   } catch {
     return null;
@@ -173,6 +237,8 @@ export async function buildShareUrl(launch: UrlLaunch): Promise<string> {
             ...(launch.parts.redeemer ? { redeemer: launch.parts.redeemer } : {}),
             ...(launch.parts.datum ? { datum: launch.parts.datum } : {}),
             ...(launch.parts.cost_models?.length ? { costModels: launch.parts.cost_models } : {}),
+            ...(launch.parts.ex_units?.length ? { exUnits: launch.parts.ex_units } : {}),
+            ...(launch.parts.purpose ? { purpose: launch.parts.purpose } : {}),
           };
   const d = toBase64Url(await gzip(JSON.stringify(o)));
   const { origin, pathname } = window.location;

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::DebuggerEngine;
 use crate::budget::SerializableBudget;
-use crate::debugger_engine::{new_session_from_program, SessionController};
+use crate::debugger_engine::{new_session_from_parts, new_session_from_program, SessionController};
 use crate::profile::{
     ProfileAttribution, ProfileOutcome, ProfileRunOutcome, ProfileRunResult, ProfileRunner,
     ProfileTerm, SerializableProfile,
@@ -212,6 +212,98 @@ fn profile_leaves_the_debug_session_log_untouched() {
     let never_profiled = run_to_end_logs(&mut new_session_from_program(TRACE_PROGRAM, "V3").unwrap());
     assert_eq!(profiled_then_run, r#"["profiled"]"#, "and the session logs its own run");
     assert_eq!(profiled_then_run, never_profiled);
+}
+
+// ── declared ExUnits (the parts deep-link) ───────────────────────────────────
+//
+// A shared "parts" link carries the redeemer's Data ARGUMENT but not the ExUnits its witness
+// declared — those live in the transaction's witness set and are derivable from nothing in the
+// link. `ex_units` is how a generator hands them over; a session that was given none must report
+// none, because the alternative (a share of `ExBudget::default()`) reads as a real budget.
+
+/// A program small enough that the run is beside the point — these tests are about the numbers the
+/// session DECLARES, not the ones it spends.
+const TINY_PROGRAM: &str = "(program 1.1.0 (con integer 42))";
+
+/// A parts session over `TINY_PROGRAM`, with `ex_units` set to the given JSON (or absent).
+fn parts_session(ex_units: Option<serde_json::Value>) -> SessionController {
+    let mut cfg = serde_json::json!({ "script": TINY_PROGRAM, "language": "V3" });
+    if let Some(v) = ex_units {
+        cfg["ex_units"] = v;
+    }
+    new_session_from_parts(&cfg.to_string()).expect("a parts config always opens")
+}
+
+/// `(cpu_limit, mem_limit)` from the profile and `(cpu, mem)` available from the budget — the two
+/// surfaces that quote a limit, which have to agree about whether there is one.
+fn declared_limits(session: &mut SessionController) -> ((Option<i64>, Option<i64>), (Option<i64>, Option<i64>)) {
+    session.profile_start().unwrap();
+    session.profile_run(u32::MAX).unwrap();
+    let profile: SerializableProfile =
+        serde_json::from_str(&session.profile_report().unwrap()).unwrap();
+    let budget: SerializableBudget = serde_json::from_str(&session.get_budget().unwrap()).unwrap();
+    (
+        (profile.totals.cpu_limit, profile.totals.mem_limit),
+        (budget.ex_units_available, budget.memory_units_available),
+    )
+}
+
+#[test]
+fn parts_ex_units_are_the_declared_limit() {
+    let mut session = parts_session(Some(serde_json::json!([8_177_555, 25_305])));
+    let (profile, budget) = declared_limits(&mut session);
+    assert_eq!(profile, (Some(8_177_555), Some(25_305)), "profile totals");
+    assert_eq!(budget, (Some(8_177_555), Some(25_305)), "budget panel");
+}
+
+#[test]
+fn parts_without_ex_units_declare_no_limit() {
+    let mut session = parts_session(None);
+    let (profile, budget) = declared_limits(&mut session);
+    assert_eq!(profile, (None, None), "no ex_units in the link, no limit in the profile");
+    assert_eq!(budget, (None, None), "…and none in the budget either");
+}
+
+/// Every one of these is a link somebody would still expect to open. Losing the declared limit is
+/// the whole cost of getting `ex_units` wrong; failing to open is not on the table.
+#[test]
+fn a_malformed_ex_units_is_ignored_not_fatal() {
+    for malformed in [
+        serde_json::json!([8_177_555]),                 // one number: which one?
+        serde_json::json!([8_177_555, 25_305, 1]),      // three
+        serde_json::json!([]),                          // none
+        serde_json::json!([-1, 25_305]),                // negative cpu
+        serde_json::json!([8_177_555, -25_305]),        // negative mem
+        serde_json::json!([1.5, 2.5]),                  // not integers
+        serde_json::json!(["8177555", "25305"]),        // strings
+        serde_json::json!("8177555,25305"),             // the URL form, not decoded
+        serde_json::json!({ "cpu": 8_177_555 }),        // an object
+        serde_json::json!(null),
+    ] {
+        let mut session = parts_session(Some(malformed.clone()));
+        let (profile, budget) = declared_limits(&mut session);
+        assert_eq!(profile, (None, None), "profile limit for ex_units = {malformed}");
+        assert_eq!(budget, (None, None), "budget limit for ex_units = {malformed}");
+    }
+}
+
+/// A bare UPLC program has no redeemer and no link to carry one — it declares nothing either.
+#[test]
+fn a_bare_program_declares_no_limit() {
+    let mut session = new_session_from_program(TINY_PROGRAM, "V3").unwrap();
+    let (profile, budget) = declared_limits(&mut session);
+    assert_eq!(profile, (None, None));
+    assert_eq!(budget, (None, None));
+}
+
+/// The tx path still declares the redeemer's own ExUnits — the fixture's `Spend:2` witness.
+#[test]
+fn a_tx_session_declares_the_redeemers_ex_units() {
+    let budget: SerializableBudget =
+        serde_json::from_str(&fixture_session().get_budget().unwrap()).unwrap();
+    // `840002d87980821a0004bd501a07f45cee` in the witness set: ex_units = [mem, steps].
+    assert_eq!(budget.ex_units_available, Some(133_455_086));
+    assert_eq!(budget.memory_units_available, Some(310_608));
 }
 
 // ── v2 attribution ───────────────────────────────────────────────────────────
@@ -576,6 +668,51 @@ fn collect_ids(term: &Term<NamedDeBruijn>, out: &mut HashSet<i32>) {
     for child in child_terms(term) {
         collect_ids(child, out);
     }
+}
+
+// ── the purpose a parts deep-link implies ────────────────────────────────────
+//
+// A "parts" link carries a context, and the context names the ScriptPurpose. Reading it needs no
+// transaction, so a link opened from cquisitor can say what the script is being run for instead of
+// printing a dash. What must NOT happen is reporting a purpose for Data that merely looks the part.
+
+/// A context that is valid PlutusData but not a ScriptContext has no purpose to report — and must
+/// not take the session down on the way to finding that out.
+#[test]
+fn an_ordinary_datum_is_not_mistaken_for_a_script_context() {
+    // `Constr 3 [_, Constr 1 []]` is an unremarkable Aiken datum. Arity alone would read a purpose
+    // off it and make the Session panel assert "Spending" about a session that has none.
+    for ctx_hex in [
+        "d87c9f40d87a80ff",   // Constr 3 [bytes, Constr 1 []]  → V1/V2 arity, wrong outer index
+        "d87e9f4040d87d80ff", // Constr 5 [bytes, bytes, Constr 4 []] → V3 arity, wrong outer index
+    ] {
+        let cfg = serde_json::json!({
+            "script": "(program 1.0.0 (con integer 1))", "language": "V2", "context": ctx_hex,
+        });
+        let session = new_session_from_parts(&cfg.to_string()).unwrap();
+        assert_eq!(
+            session.get_script_purpose().unwrap(), "",
+            "context {ctx_hex} is not a ScriptContext and must name no purpose",
+        );
+    }
+}
+
+#[test]
+fn a_non_string_purpose_loses_the_label_not_the_link() {
+    // Same contract as a malformed `ex_units`: the link still opens.
+    let cfg = serde_json::json!({
+        "script": "(program 1.0.0 (con integer 1))", "language": "V2", "purpose": 123,
+    });
+    let session = new_session_from_parts(&cfg.to_string())
+        .expect("a non-string purpose must not abort the config parse");
+    assert_eq!(session.get_script_purpose().unwrap(), "");
+}
+
+/// Tx mode reads it off the typed `ScriptContext` instead — the same six names, one of which the
+/// e2e fixture's `Spend:2` redeemer is.
+#[test]
+fn a_tx_session_names_its_purpose_too() {
+    assert_eq!(fixture_session().get_script_purpose().unwrap(), "Spending");
 }
 
 /// Steps a session to completion and returns its log, as `get_logs()` serialises it.
