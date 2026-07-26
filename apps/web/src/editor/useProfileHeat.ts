@@ -210,6 +210,8 @@ export function profileInlayHints(
   model: MonacoT.editor.ITextModel,
   range: MonacoT.IRange,
   statusLine: number | undefined,
+  /** Characters of the line's inlay budget already spent by the term's own hints. */
+  used?: ReadonlyMap<number, number>,
 ): MonacoT.languages.InlayHint[] {
   const st = useStore.getState();
   const index = st.profileIndex;
@@ -226,25 +228,45 @@ export function profileInlayHints(
     if (!stats) continue;
     hints.push({
       position: { lineNumber: ln + 1, column: model.getLineMaxColumn(ln + 1) },
-      label: inlayText(stats, index.context, st.profileScope),
+      label: inlayText(stats, index.context, st.profileScope, MAX_LINE_LABEL - (used?.get(ln) ?? 0)),
       paddingLeft: true,
     });
   }
   return hints;
 }
 
+/** Monaco caps the SUM of a line's inlay labels and truncates the overflow — see the budget the
+ *  caller passes in. Mirrored from the editor's own `_MAX_LABEL_LEN`. */
+const MAX_LINE_LABEL = 43;
+
 /**
- * `// 8.44% self · 62.40% tree · 41,203×`. The two numbers are ALWAYS printed together so one
- * cannot be read without the other — a big self with a small subtree and a small self with a big
- * subtree call for opposite fixes. `scope` puts the active one first (and only here: the lane's
- * tooltip and hover card are fixed self-then-subtree, because that decoration is not rebuilt when
- * the scope toggles and a scope-dependent order there would go stale silently).
+ * `// 8.44% self · 62.40% tree · 41,203×`, shortened to whatever the line has room for. The two
+ * numbers are ALWAYS printed together so one cannot be read without the other — a big self with a
+ * small subtree and a small self with a big subtree call for opposite fixes. `scope` puts the
+ * active one first (and only here: the lane's tooltip and hover card are fixed self-then-subtree,
+ * because that decoration is not rebuilt when the scope toggles and a scope-dependent order there
+ * would go stale silently).
+ *
+ * The forms degrade in a fixed order rather than letting Monaco cut mid-word: it truncated
+ * `… 7.61% tree · 39×` to `… 7.61% tree · …`, which spends characters on a word and then drops the
+ * number it belonged to. Losing the labels first, then the hit count, keeps every character that
+ * survives meaningful — and the hover card carries the full version regardless.
  */
-function inlayText(s: LaneStats, ctx: LaneContext, scope: ProfileScope): string {
-  const self = `${fmtPct(s.self, ctx.total)} self`;
-  const tree = `${fmtPct(s.subtree, ctx.total)} tree`;
-  const pair = scope === 'subtree' ? `${tree} · ${self}` : `${self} · ${tree}`;
-  return `// ${pair} · ${fmtInt(s.hits)}×`;
+function inlayText(s: LaneStats, ctx: LaneContext, scope: ProfileScope, budget: number): string {
+  const a = fmtPct(scope === 'subtree' ? s.subtree : s.self, ctx.total);
+  const b = fmtPct(scope === 'subtree' ? s.self : s.subtree, ctx.total);
+  const wa = scope === 'subtree' ? 'tree' : 'self';
+  const wb = scope === 'subtree' ? 'self' : 'tree';
+  const hits = `${fmtInt(s.hits)}×`;
+  for (const form of [
+    `// ${a} ${wa} · ${b} ${wb} · ${hits}`,
+    `// ${a} · ${b} · ${hits}`,
+    `// ${a} · ${b}`,
+    `// ${a}`,
+  ]) {
+    if (form.length <= budget) return form;
+  }
+  return `// ${a}`;
 }
 
 // ── The hot list ────────────────────────────────────────────────────────────────────────────────

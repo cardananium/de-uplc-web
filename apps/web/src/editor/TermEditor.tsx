@@ -104,6 +104,11 @@ function registerInlayProvider(monaco: MonacoNS): void {
       // Term inlay hints (toggleable, per-kind). Walked through the per-line index and only over
       // the queried range — the range is the viewport ± one screen (~150 lines), which is what
       // makes a 200k-node term free to scroll.
+      // How many characters of Monaco's per-LINE inlay budget the term's own hints already spend.
+      // The controller caps the SUM of a line's hint labels (`_MAX_LABEL_LEN`) and truncates the
+      // overflow — and the cost hint, being appended last, is what gets cut. Measured on a hot
+      // line: `term: ` + `id:15438` = 14 of 43, leaving 29; a `fn: UnConstrData` line leaves 13.
+      const used = new Map<number, number>();
       if (st.inlayHintsEnabled && st.termHints.length > 0) {
         const idx = hintIndexFor(st.termHints);
         const first = Math.max(0, range.startLineNumber - 1);
@@ -111,6 +116,7 @@ function registerInlayProvider(monaco: MonacoNS): void {
         for (let ln = first; ln <= last; ln++) {
           for (let i = idx.start[ln]; i < idx.start[ln + 1]; i++) {
             const h = idx.hints[i];
+            used.set(h.line, (used.get(h.line) ?? 0) + h.text.length);
             hints.push({
               position: { lineNumber: h.line + 1, column: h.character + 1 },
               label: h.text,
@@ -144,7 +150,7 @@ function registerInlayProvider(monaco: MonacoNS): void {
 
       // Per-line costs on hot lines. Last, and told which line the status comment just took: two
       // trailing comments on one line would be a wall of text exactly where the user is stopped.
-      hints.push(...profileInlayHints(model, range, statusLine));
+      hints.push(...profileInlayHints(model, range, statusLine, used));
 
       return { hints, dispose() {} };
     },
