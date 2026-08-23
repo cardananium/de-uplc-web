@@ -393,6 +393,12 @@ export function TermEditor() {
         // its own 16px and swallows every mousedown right of x = 4. Nothing to fold in a read-only
         // viewer anyway, and it saves the indent-range provider walking 41k indents.
         folding: false,
+        // Off for the same reason, plus one of its own: its render is async, and a term swap that
+        // lands mid-render leaves it asking the NEW model for a line of the old one —
+        // `getBottomForLineNumber` then throws `Illegal value for lineNumber` out of a promise
+        // nothing awaits. Measured: 8 unhandled rejections per profiler e2e run, none after this.
+        // A read-only viewer with folding off has nothing to keep on screen anyway.
+        stickyScroll: { enabled: false },
         // Fixed for the editor's whole life — never `updateOptions`ed when a profile arrives or is
         // cleared, so the program text does not shift sideways under the user.
         lineDecorationsWidth: 16,
