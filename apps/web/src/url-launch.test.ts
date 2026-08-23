@@ -197,3 +197,89 @@ describe('links minted before exUnits existed', () => {
     expect(back).toEqual({ kind: 'program', script: SCRIPT, version: 'V3' });
   });
 });
+
+describe('decompiler deep-link', () => {
+  const HEX = '46010000200101';
+
+  it('opens from #decompile=<hex>', () => {
+    setUrl(`${ORIGIN}#decompile=${HEX}`);
+    expect(parseUrlLaunch()).toEqual({ kind: 'decompile', script: HEX });
+  });
+
+  it('opens from ?decompile=<hex>', () => {
+    setUrl(`${ORIGIN}?decompile=${HEX}`);
+    expect(parseUrlLaunch()).toEqual({ kind: 'decompile', script: HEX });
+  });
+
+  it('opens from #view=decompiler&script=<hex> without stealing a debugger script= link', () => {
+    setUrl(`${ORIGIN}#view=decompiler&script=${HEX}`);
+    expect(parseUrlLaunch()).toEqual({ kind: 'decompile', script: HEX });
+    setUrl(`${ORIGIN}#script=${HEX}`);
+    expect(parseUrlLaunch()).toEqual({ kind: 'program', script: HEX, version: 'V3' });
+  });
+
+  it('strips whitespace in the hex', () => {
+    setUrl(`${ORIGIN}#decompile=${encodeURIComponent('46 01\n0000200101')}`);
+    expect(parseUrlLaunch()).toEqual({ kind: 'decompile', script: HEX });
+  });
+
+  it('round-trips a short script through #decompile=', async () => {
+    setUrl(ORIGIN);
+    const url = await buildShareUrl({ kind: 'decompile', script: HEX });
+    expect(url).toBe(`${ORIGIN}#decompile=${HEX}`);
+    setUrl(url);
+    expect(await resolveUrlLaunch()).toEqual({ kind: 'decompile', script: HEX });
+  });
+
+  it('round-trips a large script through compressed #d=', async () => {
+    const big = 'aa'.repeat(1200);
+    setUrl(ORIGIN);
+    const url = await buildShareUrl({ kind: 'decompile', script: big });
+    expect(url.includes('#d=')).toBe(true);
+    setUrl(url);
+    expect(await resolveUrlLaunch()).toEqual({ kind: 'decompile', script: big });
+  });
+
+  it('carries v and purpose on the short #decompile= form', async () => {
+    setUrl(`${ORIGIN}#decompile=${HEX}&v=v2&purpose=spend`);
+    expect(parseUrlLaunch()).toEqual({ kind: 'decompile', script: HEX, version: 'PlutusV2', purpose: 'Spend' });
+    setUrl(ORIGIN);
+    const url = await buildShareUrl({ kind: 'decompile', script: HEX, version: 'PlutusV2', purpose: 'Spend' });
+    expect(url).toBe(`${ORIGIN}#decompile=${HEX}&v=v2&purpose=spend`);
+    setUrl(url);
+    expect(await resolveUrlLaunch()).toEqual({ kind: 'decompile', script: HEX, version: 'PlutusV2', purpose: 'Spend' });
+  });
+
+  it('accepts view=decompiler with v= and purpose=', () => {
+    setUrl(`${ORIGIN}#view=decompiler&script=${HEX}&v=v3&purpose=mint`);
+    expect(parseUrlLaunch()).toEqual({ kind: 'decompile', script: HEX, version: 'PlutusV3', purpose: 'Mint' });
+  });
+
+  it('uses certificate for the crate Certificate purpose; publish is not a token', async () => {
+    setUrl(`${ORIGIN}#decompile=${HEX}&purpose=certificate`);
+    expect(parseUrlLaunch()).toEqual({ kind: 'decompile', script: HEX, purpose: 'Certificate' });
+    setUrl(`${ORIGIN}#decompile=${HEX}&purpose=publish`);
+    expect(parseUrlLaunch()).toEqual({ kind: 'decompile', script: HEX });
+    setUrl(ORIGIN);
+    const url = await buildShareUrl({ kind: 'decompile', script: HEX, purpose: 'Certificate' });
+    expect(url).toBe(`${ORIGIN}#decompile=${HEX}&purpose=certificate`);
+    setUrl(url);
+    expect(await resolveUrlLaunch()).toEqual({ kind: 'decompile', script: HEX, purpose: 'Certificate' });
+  });
+
+  it('drops an unknown version / purpose rather than inventing one', () => {
+    setUrl(`${ORIGIN}#decompile=${HEX}&v=v9&purpose=whatever`);
+    expect(parseUrlLaunch()).toEqual({ kind: 'decompile', script: HEX });
+  });
+
+  it('round-trips v and purpose through compressed #d=', async () => {
+    const big = 'aa'.repeat(1200);
+    setUrl(ORIGIN);
+    const url = await buildShareUrl({ kind: 'decompile', script: big, version: 'PlutusV1', purpose: 'Withdraw' });
+    expect(url.includes('#d=')).toBe(true);
+    setUrl(url);
+    expect(await resolveUrlLaunch()).toEqual({
+      kind: 'decompile', script: big, version: 'PlutusV1', purpose: 'Withdraw',
+    });
+  });
+});

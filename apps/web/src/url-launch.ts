@@ -4,6 +4,13 @@ import type { ProgramParts } from './store';
 //   ?script=<hex|uplc>&v=v3                                   → a clean (bare) program
 //   ?script=<hex>&context=<cbor|json>&redeemer=<cbor>&v=v2 …  → script + manual Data args (parts)
 //   #d=<base64url(gzip(json))>                                → the same fields, compressed (large links)
+//
+// Decompiler deep-link (does NOT steal a debugger `script=` link):
+//   #decompile=<hex>[&v=v2][&purpose=spend]                   → Decompiler tab on that bytecode
+//   #view=decompiler&script=<hex>&v=v2&purpose=certificate    → same
+//   #d=… with { view: "decompiler", script, v?, purpose? }
+// `v` is v1|v2|v3. `purpose` is exactly one of: spend, mint, withdraw, certificate, vote, propose
+// (the crate's Certificate / Certifying purpose is `certificate` on this wire). Unknown values are dropped.
 // Params (query string OR hash, e.g. https://…/#script=…&redeemer=…):
 //   script      (required) compiled bytecode hex OR UPLC text
 //   v|version   "v1"|"v2"|"v3" (default v3)
@@ -37,7 +44,9 @@ export type UrlLaunch =
   // A full transaction (the raw content the user loaded: CBOR hex or {transaction,utxos} JSON),
   // optionally reopened on a specific redeemer. Only the compressed `#d=` form carries this — a tx
   // is too large for plain query params.
-  | { kind: 'transaction'; tx: string; redeemer?: string };
+  | { kind: 'transaction'; tx: string; redeemer?: string }
+  /** Open the Decompiler tab on this compiled bytecode (hex, whitespace ignored). */
+  | { kind: 'decompile'; script: string; version?: string; purpose?: string };
 
 /** Normalized launch fields, the common shape behind both the plain-param and compressed paths. */
 interface LaunchFields {
@@ -137,9 +146,75 @@ function launchFromFields(f: LaunchFields): UrlLaunch | null {
   return { kind: 'program', script, version };
 }
 
+function isDecompilerView(raw: string | null): boolean {
+  return (raw ?? '').trim().toLowerCase() === 'decompiler';
+}
+
+/** Catalogue wire tag `PlutusV1`/`V2`/`V3`, or undefined if the link did not name a real version. */
+export function parseDecompileVersion(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  const t = raw.trim();
+  if (!t) return undefined;
+  const n = t.replace(/^plutus/i, '').replace(/^v/i, '');
+  if (n === '1' || n === '2' || n === '3') return `PlutusV${n}`;
+  return undefined;
+}
+
+/** Query token → catalogue tag. One token per purpose; Certifying is `certificate`. */
+const PURPOSE_WIRE: Record<string, string> = {
+  spend: 'Spend',
+  mint: 'Mint',
+  withdraw: 'Withdraw',
+  certificate: 'Certificate',
+  vote: 'Vote',
+  propose: 'Propose',
+};
+
+const PURPOSE_QUERY: Record<string, string> = Object.fromEntries(
+  Object.entries(PURPOSE_WIRE).map(([query, wire]) => [wire, query]),
+);
+
+/** Catalogue purpose tag, or undefined. Only the tokens in `PURPOSE_WIRE`. */
+export function parseDecompilePurpose(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  return PURPOSE_WIRE[raw.trim().toLowerCase()];
+}
+
+function decompileQueryVersion(wire: string): string {
+  return wire === 'PlutusV1' ? 'v1' : wire === 'PlutusV2' ? 'v2' : wire === 'PlutusV3' ? 'v3' : wire;
+}
+
+function decompileQueryPurpose(wire: string): string {
+  return PURPOSE_QUERY[wire] ?? wire.toLowerCase();
+}
+
+function decompileLaunch(
+  script: string | null | undefined,
+  versionRaw?: string | null,
+  purposeRaw?: string | null,
+): UrlLaunch {
+  const version = parseDecompileVersion(versionRaw);
+  const purpose = parseDecompilePurpose(purposeRaw);
+  return {
+    kind: 'decompile',
+    script: (script ?? '').replace(/\s+/g, ''),
+    ...(version ? { version } : {}),
+    ...(purpose ? { purpose } : {}),
+  };
+}
+
 /** Parse a plain-param debug deep-link (query or hash). Returns null when there's no `script`. */
 export function parseUrlLaunch(): UrlLaunch | null {
   const p = readParams();
+  // `decompile=<hex>` is the hand-written form. `view=decompiler` reuses `script=` so a generator
+  // that already has the bytecode can flip the tab without a second key.
+  if (p.has('decompile') || isDecompilerView(p.get('view') ?? p.get('tab'))) {
+    return decompileLaunch(
+      p.get('decompile') || p.get('script'),
+      p.get('v') || p.get('version'),
+      p.get('purpose'),
+    );
+  }
   return launchFromFields({
     script: p.get('script'),
     version: p.get('v') || p.get('version'),
@@ -181,6 +256,11 @@ export async function decodeCompressedLaunch(d: string): Promise<UrlLaunch | nul
     // Full-transaction launch (mutually exclusive with the script forms).
     const tx = str('tx');
     if (tx) return { kind: 'transaction', tx, redeemer: str('redeemer') };
+    const view = str('view') ?? str('tab');
+    const decompileHex = str('decompile');
+    if (decompileHex || isDecompilerView(view ?? null)) {
+      return decompileLaunch(decompileHex || str('script'), str('v') ?? str('version'), str('purpose'));
+    }
     const ints = (k: string) =>
       Array.isArray(o[k]) ? (o[k] as unknown[]).map(Number).filter((n) => Number.isFinite(n)) : undefined;
     return launchFromFields({
@@ -225,6 +305,25 @@ async function gzip(text: string): Promise<Uint8Array> {
  * `decodeCompressedLaunch`.
  */
 export async function buildShareUrl(launch: UrlLaunch): Promise<string> {
+  const { origin, pathname } = window.location;
+  if (launch.kind === 'decompile') {
+    const script = launch.script.replace(/\s+/g, '');
+    const extras: Record<string, string> = {};
+    if (launch.version) extras.v = decompileQueryVersion(launch.version);
+    if (launch.purpose) extras.purpose = decompileQueryPurpose(launch.purpose);
+    // Short hex stays a readable `#decompile=` link; large validators go through `#d=`.
+    if (script.length > 0 && script.length <= 2000) {
+      const q = new URLSearchParams({ decompile: script, ...extras });
+      return `${origin}${pathname}#${q.toString()}`;
+    }
+    const d = toBase64Url(await gzip(JSON.stringify({
+      view: 'decompiler',
+      script,
+      ...(launch.version ? { v: decompileQueryVersion(launch.version) } : {}),
+      ...(launch.purpose ? { purpose: decompileQueryPurpose(launch.purpose) } : {}),
+    })));
+    return `${origin}${pathname}#d=${d}`;
+  }
   const o: Record<string, unknown> =
     launch.kind === 'program'
       ? { script: launch.script, v: launch.version }
@@ -241,6 +340,5 @@ export async function buildShareUrl(launch: UrlLaunch): Promise<string> {
             ...(launch.parts.purpose ? { purpose: launch.parts.purpose } : {}),
           };
   const d = toBase64Url(await gzip(JSON.stringify(o)));
-  const { origin, pathname } = window.location;
   return `${origin}${pathname}#d=${d}`;
 }

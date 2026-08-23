@@ -5,10 +5,10 @@ on:
     branches: [main]
   pull_request:
 
-# The Rust→WASM engine (packages/engine-wasm/pkg) is NOT committed — the `check` job builds it
-# from rust-src on stable Rust (wasm-pack --target web; on Linux the distro clang has the wasm
-# backend, so no toolchain override is needed). Rebuild locally with `npm run build:wasm` (the
-# dev/build prebuild guard does this automatically when pkg/ is missing).
+# Both WASM artifacts are built here (engine via wasm-pack, decompiler via cargo +
+# wasm-bindgen-cli). Linux distro clang has the wasm backend; no LLVM override.
+# Local rebuild: `npm run build:wasm` / `npm run build:decompiler-wasm` (predev/prebuild
+# run ensure-wasm.mjs if pkg/ is missing).
 #
 # NOTE: the headless-Chrome E2E job is temporarily removed — the apps/web/e2e suite is gitignored
 # for now. Re-add the job (and un-ignore apps/web/e2e) once the suite is committed.
@@ -23,18 +23,21 @@ jobs:
           node-version: 20
           cache: npm
 
-      # --- Build the engine WASM (not committed) ---
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - uses: taiki-e/install-action@v2
         with:
-          tool: wasm-pack
+          tool: wasm-pack,wasm-bindgen-cli@0.2.127
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rust-src
+          workspaces: |
+            rust-src
+            packages/decompiler-wasm/crate
       - name: Build engine WASM
         run: npm run build:wasm
+      - name: Build decompiler WASM
+        run: npm run build:decompiler-wasm
 
       - run: npm ci
 

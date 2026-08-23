@@ -19,6 +19,7 @@ export default defineConfig({
       '@de-uplc/core': r('../../packages/core/src/index.ts'),
       '@de-uplc/engine-worker': r('../../packages/engine-worker/src/index.ts'),
       '@de-uplc/engine-wasm': r('../../packages/engine-wasm/pkg'),
+      '@de-uplc/decompiler-wasm': r('../../packages/decompiler-wasm/pkg'),
     },
   },
   worker: {

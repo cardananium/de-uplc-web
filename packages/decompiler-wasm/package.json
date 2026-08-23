@@ -1,0 +1,21 @@
+{
+  "name": "@de-uplc/decompiler-wasm",
+  "version": "0.0.1",
+  "private": true,
+  "description": "wasm-bindgen (--target web) output for the dehosk UPLC decompiler. Generated artifact — built from de-uplc-web/packages/decompiler-wasm/crate (git-deps cardananium/dehosk); committed so a clean checkout builds the app without a Rust toolchain.",
+  "type": "module",
+  "main": "./pkg/de_uplc_decompiler_wasm.js",
+  "module": "./pkg/de_uplc_decompiler_wasm.js",
+  "types": "./pkg/de_uplc_decompiler_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./pkg/de_uplc_decompiler_wasm.d.ts",
+      "import": "./pkg/de_uplc_decompiler_wasm.js"
+    },
+    "./de_uplc_decompiler_wasm_bg.wasm": "./pkg/de_uplc_decompiler_wasm_bg.wasm"
+  },
+  "files": ["pkg"],
+  "scripts": {
+    "build": "./build.sh"
+  }
+}

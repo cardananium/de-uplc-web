@@ -11,7 +11,16 @@ import './term-editor.css';
  * refresh preserves scroll/find state instead of flashing a brand-new editor. Highlighting for
  * `plutus-types-json` comes from the same TextMate bridge as the term editor.
  */
-export function CodeView({ content, language }: { content: string; language: string }) {
+export function CodeView({
+  content,
+  language,
+  wordWrap = 'on',
+}: {
+  content: string;
+  language: string;
+  /** Data tabs wrap long values; decompiled Aiken must stay `off` (wrap breaks `[(lam i_42`). */
+  wordWrap?: 'on' | 'off';
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<MonacoT.editor.IStandaloneCodeEditor>();
   const monacoRef = useRef<MonacoNS>();
@@ -40,7 +49,7 @@ export function CodeView({ content, language }: { content: string; language: str
         renderLineHighlight: 'gutter',
         // Script Context holds single very long values (bech32 addresses, hex policy ids, datum
         // blobs); wrap them so they stay fully visible instead of running off the right edge.
-        wordWrap: 'on',
+        wordWrap,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
         fontSize: 12.5,
       });

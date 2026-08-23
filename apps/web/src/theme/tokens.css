@@ -183,8 +183,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 .app-shell {
   display: grid;
   grid-template-columns: 54px 1fr;
-  grid-template-rows: 52px 1fr;
-  grid-template-areas: "brand titlebar" "rail content";
+  grid-template-rows: 52px 1fr auto;
+  grid-template-areas: "brand titlebar" "rail content" "footer footer";
   height: 100vh;
   background: var(--bg);
 }
@@ -223,6 +223,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
   border-right: 1px solid var(--border);
 }
 .rail-spacer { flex: 1; }
+
+/* bottom strip: the standing disclaimer, spanning rail + content so it shows on every view */
+.app-footer {
+  grid-area: footer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 5px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-dim);
+  font-size: 11px; line-height: 1.45; text-align: center;
+}
 
 /* round chrome icon buttons (rail + titlebar theme/settings) */
 .chrome-button {
@@ -569,22 +579,87 @@ code { background: var(--bg-subtle); padding: 1px 5px; border-radius: 4px; font-
 /* options: label↔control rows + checkbox rows */
 .dc-fields { display: flex; flex-direction: column; gap: 8px; }
 .dc-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--fg-muted); }
-.dc-field > span { white-space: nowrap; }
-.dc-field select { flex: 0 1 150px; min-width: 0; padding: 4px 8px; font-size: 12.5px; }
+.dc-field-label { display: inline-flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; }
+.dc-field-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dc-field-slider { flex-direction: column; align-items: stretch; gap: 6px; }
+.dc-layer { display: flex; flex-direction: column; gap: 5px; }
+.dc-layer input[type='range'] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 18px; margin: 0;
+  padding: 0; border: none; background: transparent; box-shadow: none; cursor: pointer;
+}
+.dc-layer input[type='range']:focus { box-shadow: none; }
+.dc-layer input[type='range']::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(var(--accent), var(--accent)) 0 / var(--dc-layer-fill, 0%) 100% no-repeat,
+              var(--border-strong);
+}
+.dc-layer input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -5px;
+  border-radius: 50%; border: 2px solid var(--surface); background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.dc-layer input[type='range']::-moz-range-track {
+  height: 4px; border-radius: 2px; background: var(--border-strong);
+}
+.dc-layer input[type='range']::-moz-range-progress {
+  height: 4px; border-radius: 2px; background: var(--accent);
+}
+.dc-layer input[type='range']::-moz-range-thumb {
+  width: 14px; height: 14px; border: 2px solid var(--surface); border-radius: 50%;
+  background: var(--accent);
+}
+.dc-layer-ticks { display: flex; justify-content: space-between; gap: 2px; }
+.dc-layer-ticks button {
+  flex: 1; min-width: 0; padding: 0; border: none; background: none; cursor: pointer;
+  color: var(--fg-muted); font: inherit; font-size: 10.5px; font-weight: 600; letter-spacing: 0.01em;
+}
+.dc-layer-ticks button:hover { color: var(--fg); }
+.dc-layer-ticks button.is-active { color: var(--accent); }
+.dc-layer-current { font-size: 11px; line-height: 1.35; }
+/* Width lives on the stack, not the select: `flex-basis` on a column-flex
+   child was being read as HEIGHT and blew every dropdown to ~190px. */
+.dc-choice-stack { display: flex; flex-direction: column; align-items: stretch; flex: 0 1 200px; width: 200px; min-width: 0; gap: 6px; }
+.dc-field select {
+  display: block; width: 100%; height: 28px; flex: none;
+  padding: 2px 8px; font-size: 12.5px; line-height: 1.2;
+}
+.dc-count { display: flex; align-items: center; gap: 6px; font-size: 11.5px; }
+.dc-count input { width: 64px; height: 28px; padding: 2px 6px; font-size: 12.5px; }
 .dc-checks { display: flex; flex-direction: column; gap: 9px; }
-.dc-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--fg); cursor: pointer; }
-.dc-check input { width: auto; flex: 0 0 auto; }
-.dc-check span { min-width: 0; }
-/* collapsible pass-cluster + validator-shape groups */
+.dc-check { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--fg); cursor: pointer; }
+.dc-check input { width: auto; flex: 0 0 auto; margin-top: 3px; }
+.dc-check-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.dc-check-label { display: inline-flex; align-items: center; gap: 4px; }
+.dc-option-summary { font-weight: 400; font-size: 11px; line-height: 1.35; }
+.dc-plain-group { margin-top: 10px; }
+.dc-plain-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.dc-hint {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: 16px; height: 16px; padding: 0; margin: 0;
+  border: none; background: none; color: var(--fg-muted); cursor: help;
+  border-radius: var(--radius-sm);
+}
+.dc-hint:hover, .dc-hint:focus-visible { color: var(--accent); }
+.dc-hint .codicon { font-size: 13px; }
+.dc-hint-pop {
+  position: fixed; z-index: 80; width: 320px; max-height: min(360px, calc(100vh - 24px));
+  overflow: auto; padding: 10px 12px; box-sizing: border-box;
+  background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  font-size: 12px; line-height: 1.45; white-space: pre-wrap;
+}
+.dc-unsupported { display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; color: var(--fg-muted); padding: 6px 0; }
+/* collapsible pass-cluster groups (CSS-hidden, stay mounted) */
 .dc-group { margin-top: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-3); }
-.dc-group > summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; }
-.dc-group > summary::-webkit-details-marker { display: none; }
-.dc-group > summary::before { content: '▸'; color: var(--fg-muted); font-size: 10px; transition: transform 0.12s ease; }
-.dc-group[open] > summary::before { transform: rotate(90deg); }
+.dc-group-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+.dc-group-toggle { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; background: none; border: none; padding: 0; cursor: pointer; color: inherit; font: inherit; text-align: left; }
+.dc-group-toggle::before { content: '▸'; color: var(--fg-muted); font-size: 10px; transition: transform 0.12s ease; }
+.dc-group:not(.is-collapsed) .dc-group-toggle::before { transform: rotate(90deg); }
 .dc-group-head { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.dc-group-title { font-weight: 600; font-size: 12.5px; }
+.dc-group-title { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 12.5px; }
 .dc-group-desc { font-size: 11px; }
 .dc-group-body { display: flex; flex-direction: column; gap: 9px; padding: 9px 12px 12px; border-top: 1px solid var(--border); }
+.dc-group.is-collapsed .dc-group-body { display: none; }
 .dc-output-panel .tabbar .tab { cursor: default; }
 
 /* Narrow viewport: stack the sidebar above the editor so neither pane is clipped. The desktop

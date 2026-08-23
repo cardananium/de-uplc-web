@@ -118,8 +118,8 @@ export function useBusyControl(): readonly [boolean, (fn: () => Promise<unknown>
   return [busy && crashEpoch === armed.current, run] as const;
 }
 
-/** Which of the three shared kinds a deep link is opening. */
-export type LaunchKind = 'transaction' | 'program' | 'parts';
+/** Which of the shared kinds a deep link is opening. */
+export type LaunchKind = 'transaction' | 'program' | 'parts' | 'decompile';
 
 // Named in the app's own vocabulary (the load toasts say "Transaction loaded" / "UPLC program
 // loaded" / "Script + context loaded"), because "Loading…" over a blank workspace tells a
@@ -128,6 +128,7 @@ const LAUNCH_LABEL: Record<LaunchKind, string> = {
   transaction: 'Opening shared transaction…',
   program: 'Opening shared program…',
   parts: 'Opening shared script…',
+  decompile: 'Opening decompiler…',
 };
 
 /**

@@ -1,4 +1,4 @@
-// Lazy Monaco bootstrap: registers the `uplc` + `plutus-types-json` languages,
+// Lazy Monaco bootstrap: registers `uplc`, `plutus-types-json`, and `dehosk` (Monarch),
 // defines a light theme, and wires TextMate-driven tokenization on top of Monaco
 // via a TokensProvider bridge. The heavy `monaco-editor` chunk is dynamically
 // imported here so it only loads when the term editor first mounts.
@@ -7,6 +7,7 @@ import type * as MonacoT from 'monaco-editor';
 import { getGrammar, INITIAL, type StateStack } from './textmate';
 import { LANGUAGES, languageConfiguration } from './grammars';
 import { UPLC_THEME, UPLC_THEME_DARK, registerThemeApplier } from './theme';
+import { DEHOSK_LANG_ID, dehoskLanguage } from './dehosk-language';
 
 export type MonacoNS = typeof import('monaco-editor');
 
@@ -37,6 +38,25 @@ async function doInit(): Promise<MonacoNS> {
       languageConfiguration as unknown as MonacoT.languages.LanguageConfiguration,
     );
   }
+
+  // Decompiled Aiken-like output: Monarch (not TextMate). Do not reuse dehosk-web's
+  // standalone vs-dark theme — tokens join the existing light/dark UPLC themes.
+  monaco.languages.register({ id: DEHOSK_LANG_ID });
+  monaco.languages.setMonarchTokensProvider(DEHOSK_LANG_ID, dehoskLanguage);
+  monaco.languages.setLanguageConfiguration(DEHOSK_LANG_ID, {
+    comments: { lineComment: '//' },
+    brackets: [
+      ['{', '}'],
+      ['[', ']'],
+      ['(', ')'],
+    ],
+    autoClosingPairs: [
+      { open: '{', close: '}' },
+      { open: '[', close: ']' },
+      { open: '(', close: ')' },
+      { open: '"', close: '"' },
+    ],
+  });
 
   monaco.editor.defineTheme(UPLC_THEME, { base: 'vs', inherit: true, colors: THEME_COLORS, rules: THEME_RULES });
   monaco.editor.defineTheme(UPLC_THEME_DARK, { base: 'vs-dark', inherit: true, colors: THEME_COLORS_DARK, rules: THEME_RULES_DARK });
@@ -169,6 +189,14 @@ const THEME_RULES: MonacoT.editor.ITokenThemeRule[] = [
   { token: 'constant.character.escape', foreground: '0270a0' },
   { token: 'string.quoted', foreground: '2f7d2e' },
   { token: 'string', foreground: '2f7d2e' },
+  { token: 'string.hex', foreground: '9a6a00' },
+  { token: 'type.constructor', foreground: '0270a0', fontStyle: 'bold' },
+  { token: 'type', foreground: '0270a0' },
+  { token: 'number', foreground: '9a6a00' },
+  { token: 'operator', foreground: '383a42' },
+  { token: 'identifier', foreground: 'cf3a2e' },
+  { token: 'bracket', foreground: '9a6a00' },
+  { token: 'keyword.operator', foreground: '2f63d8' },
 ];
 
 // Dark syntax palette (Material-ish): purple keywords (lam/delay/force), blue
@@ -190,4 +218,12 @@ const THEME_RULES_DARK: MonacoT.editor.ITokenThemeRule[] = [
   { token: 'constant.character.escape', foreground: '89ddff' },
   { token: 'string.quoted', foreground: 'c3e88d' },
   { token: 'string', foreground: 'c3e88d' },
+  { token: 'string.hex', foreground: 'e2b86b' },
+  { token: 'type.constructor', foreground: '89ddff', fontStyle: 'bold' },
+  { token: 'type', foreground: '89ddff' },
+  { token: 'number', foreground: 'f78c6c' },
+  { token: 'operator', foreground: 'd7dce4' },
+  { token: 'identifier', foreground: 'e06c75' },
+  { token: 'bracket', foreground: 'ffc66d' },
+  { token: 'keyword.operator', foreground: '82aaff' },
 ];

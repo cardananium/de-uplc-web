@@ -10,7 +10,8 @@
     "paths": {
       "@de-uplc/core": ["../../packages/core/src/index.ts"],
       "@de-uplc/engine-worker": ["../../packages/engine-worker/src/index.ts"],
-      "@de-uplc/engine-wasm": ["../../packages/engine-wasm/pkg/de_uplc.d.ts"]
+      "@de-uplc/engine-wasm": ["../../packages/engine-wasm/pkg/de_uplc.d.ts"],
+      "@de-uplc/decompiler-wasm": ["../../packages/decompiler-wasm/pkg/de_uplc_decompiler_wasm.d.ts"]
     }
   },
   "include": ["src"]

@@ -1,0 +1,5 @@
+# Deep recursive decompiler passes need a large stack. Native dehosk runs them on a 64 MB thread;
+# wasm has no threads, so we size the linear-memory shadow stack to 64 MB at link time instead.
+# (Default wasm shadow stack is ~1 MB → real validators overflow it.)
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=-zstack-size=67108864"]

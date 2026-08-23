@@ -5,17 +5,14 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Rust build artifacts (engine crate; also has its own rust-src/.gitignore)
+# Rust build artifacts. WASM pkg/ is built in CI and by scripts/ensure-wasm.mjs.
 rust-src/target/
 rust-src/pkg/
-
+packages/engine-wasm/pkg/
+packages/decompiler-wasm/crate/target/
+packages/decompiler-wasm/pkg/
 _disabled/
 apps/web/e2e/
 
 # OS / editor
 .DS_Store
-
-# Generated Rust→WASM engine output — NO LONGER committed. CI builds it before the web
-# build (.github/workflows/ci.yml); locally the prebuild guard (scripts/ensure-wasm.mjs)
-# builds it on demand. Rebuild manually with `npm run build:wasm` (needs Rust + wasm-pack).
-packages/engine-wasm/pkg/

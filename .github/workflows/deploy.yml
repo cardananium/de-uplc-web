@@ -34,18 +34,21 @@ jobs:
           node-version: 20
           cache: npm
 
-      # Build the Rust→WASM engine (not committed), same as CI.
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - uses: taiki-e/install-action@v2
         with:
-          tool: wasm-pack
+          tool: wasm-pack,wasm-bindgen-cli@0.2.127
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rust-src
+          workspaces: |
+            rust-src
+            packages/decompiler-wasm/crate
       - name: Build engine WASM
         run: npm run build:wasm
+      - name: Build decompiler WASM
+        run: npm run build:decompiler-wasm
 
       - run: npm ci
 

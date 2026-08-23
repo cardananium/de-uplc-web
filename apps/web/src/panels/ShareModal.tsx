@@ -15,8 +15,20 @@ const sizeLabel = (n: number): string => (n < 1024 ? `${n} chars` : `${(n / 1024
  * the click's user-activation valid (writeText after the async gzip is what browsers reject), and the
  * link is visible for manual select-and-copy as a fallback.
  */
-export function ShareModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ShareModal({
+  open,
+  onClose,
+  getUrl,
+  blurb,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Override the debugger session link (used by the decompiler share). */
+  getUrl?: () => Promise<string | null>;
+  blurb?: string;
+}) {
   const getShareUrl = useStore((s) => s.getShareUrl);
+  const buildUrl = getUrl ?? getShareUrl;
   const [state, setState] = useState<EncodeState>({ status: 'encoding' });
   const [copied, setCopied] = useState(false);
   const urlRef = useRef<HTMLTextAreaElement>(null);
@@ -27,7 +39,7 @@ export function ShareModal({ open, onClose }: { open: boolean; onClose: () => vo
     let cancelled = false;
     setState({ status: 'encoding' });
     setCopied(false);
-    getShareUrl()
+    buildUrl()
       .then((url) => {
         if (cancelled) return;
         setState(url
@@ -36,7 +48,7 @@ export function ShareModal({ open, onClose }: { open: boolean; onClose: () => vo
       })
       .catch((e) => { if (!cancelled) setState({ status: 'error', msg: e instanceof Error ? e.message : String(e) }); });
     return () => { cancelled = true; };
-  }, [open, getShareUrl]);
+  }, [open, buildUrl]);
 
   // Esc to close.
   useEffect(() => {
@@ -71,8 +83,7 @@ export function ShareModal({ open, onClose }: { open: boolean; onClose: () => vo
           <button className="icon-button" title="Close" aria-label="Close" onClick={onClose}><Codicon name="close" /></button>
         </div>
         <p className="muted" style={{ fontSize: 12.5, margin: '0 0 12px' }}>
-          A self-contained link to this session — whoever opens it gets the same script / transaction
-          (and selected redeemer), no setup needed.
+          {blurb ?? 'A self-contained link to this session — whoever opens it gets the same script / transaction (and selected redeemer), no setup needed.'}
         </p>
 
         {state.status === 'encoding' && (
