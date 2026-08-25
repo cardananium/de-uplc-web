@@ -94,6 +94,10 @@ pub(crate) struct DecompileOptionsDto {
     #[serde(default = "default_true")]
     expect_or_fail: bool,
     #[serde(default)]
+    strip_all_traces: bool,
+    #[serde(default)]
+    strip_plutustx_traces: bool,
+    #[serde(default)]
     compilable_data_access: bool,
     #[serde(default)]
     ordering_names: bool,
@@ -461,6 +465,8 @@ impl From<DecompileOptionsDto> for DecompileOptions {
             recognize_prelude_constructors: dto.recognize_prelude_constructors,
             decode_church_to_native: dto.decode_church_to_native,
             expect_or_fail: dto.expect_or_fail,
+            strip_all_traces: dto.strip_all_traces,
+            strip_plutustx_traces: dto.strip_plutustx_traces,
             compilable_data_access: dto.compilable_data_access,
             ordering_names: dto.ordering_names,
             output_layer: dto.output_layer.into(),
