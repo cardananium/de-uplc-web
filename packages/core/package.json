@@ -12,10 +12,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src",
-    "generate-schemas": "cd ../../rust-src && cargo run --bin generate_schemas",
+    "generate-schemas": "cd ../engine-wasm/crate && cargo run --bin generate_schemas",
     "generate-types": "node scripts/generate-types.cjs",
     "check-types": "node scripts/check-types.cjs",
-    "generate-all": "npm run generate-schemas && cp ../../rust-src/schemas/combined_schema.json src/debugger-types/ && npm run generate-types"
+    "generate-all": "npm run generate-schemas && cp ../engine-wasm/crate/schemas/combined_schema.json src/debugger-types/ && npm run generate-types"
   },
   "devDependencies": {
     "json-schema-to-typescript": "^15.0.4"

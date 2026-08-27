@@ -6,8 +6,8 @@ dist/
 *.tsbuildinfo
 
 # Rust build artifacts. WASM pkg/ is built in CI and by scripts/ensure-wasm.mjs.
-rust-src/target/
-rust-src/pkg/
+packages/engine-wasm/crate/target/
+packages/engine-wasm/crate/pkg/
 packages/engine-wasm/pkg/
 packages/decompiler-wasm/crate/target/
 packages/decompiler-wasm/pkg/

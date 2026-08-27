@@ -7,7 +7,7 @@ const { compile } = require('json-schema-to-typescript');
 // OUTPUT_DIR resolves to packages/core/src/debugger-types (correct as-is).
 // The schema is committed alongside the generated types (debugger-types/combined_schema.json),
 // so codegen needs no sibling repo and `check-types` can prove index.ts matches it. Regenerate
-// the committed schema from Rust with `npm run generate-schemas` (writes rust-src), then copy it
+// the committed schema from Rust with `npm run generate-schemas` (writes packages/engine-wasm/crate), then copy it
 // here. Override the input via SCHEMA_PATH.
 const OUTPUT_DIR = path.join(__dirname, '..', 'src', 'debugger-types');
 const COMBINED_SCHEMA_PATH =

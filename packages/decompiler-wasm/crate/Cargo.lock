@@ -353,7 +353,7 @@ dependencies = [
 [[package]]
 name = "dehosk"
 version = "0.1.0"
-source = "git+https://github.com/cardananium/dehosk?rev=fdd804dbddb3d85eb6403eb9516283f237c7bcb6#fdd804dbddb3d85eb6403eb9516283f237c7bcb6"
+source = "git+https://github.com/cardananium/dehosk?rev=de70968a46a4fd63c0c31867c22debd06a71fce7#de70968a46a4fd63c0c31867c22debd06a71fce7"
 dependencies = [
  "clap",
  "csv",
@@ -1410,7 +1410,7 @@ checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 [[package]]
 name = "uplc"
 version = "1.1.22"
-source = "git+https://github.com/cardananium/aiken?branch=de-uplc#5b776c7601ba9d1cbb51d0c5b040bf3377fc2344"
+source = "git+https://github.com/cardananium/aiken?rev=6b8da868d514f40cb855fad6945a613bab2d5d0b#6b8da868d514f40cb855fad6945a613bab2d5d0b"
 dependencies = [
  "bitvec",
  "blst",

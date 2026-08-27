@@ -2,7 +2,7 @@
   "name": "@de-uplc/engine-wasm",
   "version": "0.0.1",
   "private": true,
-  "description": "wasm-pack (--target web) output for the de-uplc engine. Generated artifact — built from rust-src (pkg/ is gitignored; CI and the local prebuild guard build it via `npm run build:wasm`).",
+  "description": "wasm-pack (--target web) output for the de-uplc engine. Generated artifact — built from this package's crate/ (pkg/ is gitignored; CI and the local prebuild guard build it via `npm run build:wasm`).",
   "type": "module",
   "main": "./pkg/de_uplc.js",
   "module": "./pkg/de_uplc.js",

@@ -32,7 +32,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            rust-src
+            packages/engine-wasm/crate
             packages/decompiler-wasm/crate
       - name: Build engine WASM
         run: npm run build:wasm
