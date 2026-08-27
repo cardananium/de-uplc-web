@@ -340,6 +340,7 @@ export function TermEditor() {
   // on a tab switch otherwise.
   const active = useTabsStore((s) => s.activeTabId === TERM_TAB);
   const termText = useStore((s) => s.termText);
+  const termError = useStore((s) => s.termError);
   const termLocations = useStore((s) => s.termLocations);
   // The view decides how a location's line range is read — the two renderers store `endLine`
   // differently — so every index lookup has to be told which rendering these locations came from.
@@ -632,11 +633,23 @@ export function TermEditor() {
             tokenisation of 41k lines on the way back. */}
         {!termText && (
           <div className="term-editor-empty">
-            <EmptyState
-              icon="symbol-structure"
-              title="No term to show"
-              hint="Load a transaction and select a redeemer, or open a plain UPLC program."
-            />
+            {/* Two different absences, and the user can only tell them apart here: nothing has been
+                loaded yet, or a session DID load and its term could not be rendered. The second one
+                used to wear the first one's wording, which made a real failure look like an idle
+                editor. `termError` carries the reason across. */}
+            {termError ? (
+              <EmptyState
+                icon="warning"
+                title="Could not render the term"
+                hint={termError}
+              />
+            ) : (
+              <EmptyState
+                icon="symbol-structure"
+                title="No term to show"
+                hint="Load a transaction and select a redeemer, or open a plain UPLC program."
+              />
+            )}
           </div>
         )}
       </div>

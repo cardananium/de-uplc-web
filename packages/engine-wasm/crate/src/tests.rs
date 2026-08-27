@@ -726,3 +726,69 @@ fn run_to_end_logs(session: &mut SessionController) -> String {
     session.get_logs().unwrap()
 }
 
+fn every_variant_term() -> crate::serializer::SerializableTerm {
+    use crate::serializer::{SerializableConstant, SerializableTerm};
+    SerializableTerm::Case {
+        id: 1,
+        constr: Box::new(SerializableTerm::Constr {
+            id: 2,
+            constructor_tag: 7,
+            fields: vec![
+                SerializableTerm::Var { id: 3, name: "x\"quoted\\".to_string() },
+                SerializableTerm::Error { id: 4 },
+                SerializableTerm::Builtin { id: 5, fun: "AddInteger".to_string() },
+            ],
+        }),
+        branches: vec![
+            SerializableTerm::Apply {
+                id: 6,
+                function: Box::new(SerializableTerm::Lambda {
+                    id: 7,
+                    parameter_name: "i_0".to_string(),
+                    body: Box::new(SerializableTerm::Delay {
+                        id: 8,
+                        term: Box::new(SerializableTerm::Force {
+                            id: 9,
+                            term: Box::new(SerializableTerm::Constant {
+                                id: 10,
+                                constant: SerializableConstant::Integer { value: "42".to_string() },
+                            }),
+                        }),
+                    }),
+                }),
+                argument: Box::new(SerializableTerm::Constant {
+                    id: 11,
+                    constant: SerializableConstant::Unit,
+                }),
+            },
+            SerializableTerm::Constr { id: 12, constructor_tag: 0, fields: vec![] },
+        ],
+    }
+}
+
+#[test]
+fn serialize_to_json_matches_serde() {
+    let term = every_variant_term();
+    assert_eq!(term.to_json().unwrap(), serde_json::to_string(&term).unwrap());
+}
+
+#[test]
+fn deep_term_builds_serializes_and_drops_without_overflow() {
+    use std::rc::Rc;
+    use uplc::ast::Term;
+
+    const DEPTH: usize = 200_000;
+
+    let mut term: Term<NamedDeBruijn> = Term::Error { uniq_id: 0 };
+    for i in 1..=DEPTH {
+        term = Term::Delay { body: Rc::new(term), uniq_id: i as isize };
+    }
+
+    let serializable = crate::serializer::SerializableTerm::from_uplc_term(&term);
+    let json = serializable.to_json().unwrap();
+
+    assert_eq!(json.matches(r#""term_type":"Delay""#).count(), DEPTH);
+    assert_eq!(json.matches(r#""term_type":"Error""#).count(), 1);
+
+    drop(serializable);
+}

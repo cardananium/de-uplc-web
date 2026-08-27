@@ -103,6 +103,8 @@ interface AppState {
   termText?: string;
   termLocations: TermLocation[];
   termHints: TermHintInfo[];
+
+  termError?: string;
   // term rendering style: 'tree' (debug tree) or 'uplc' (canonical UPLC syntax)
   termView: TermView;
 
@@ -350,18 +352,26 @@ export const useStore = create<AppState>((set, get) => {
         if (gen !== sessionGeneration) return;
         const { text, locations, hints } = renderTerm(term);
         termEpoch += 1;
-        set((s) => ({ termText: text, termLocations: locations, termHints: hints, profileStale: staleFor(s.profileTermEpoch) }));
+        set((s) => ({ termText: text, termLocations: locations, termHints: hints, termError: undefined, profileStale: staleFor(s.profileTermEpoch) }));
       } else {
+        // No term, but nothing went wrong — leave `termError` clear so the editor says "nothing
+        // loaded" rather than accusing the session of a failure it did not have.
         currentTerm = undefined;
         termEpoch += 1;
-        set((s) => ({ termText: undefined, termLocations: [], termHints: [], profileStale: staleFor(s.profileTermEpoch) }));
+        set((s) => ({ termText: undefined, termLocations: [], termHints: [], termError: undefined, profileStale: staleFor(s.profileTermEpoch) }));
       }
     } catch (e) {
       if (gen !== sessionGeneration) return;
+      // The session itself is alive — hash, budget, stepping and logs all still work — so this does
+      // NOT fail the load. But it must not pass for one either: this used to log to the console and
+      // blank the term, so a script whose term could not be rendered looked exactly like no script
+      // at all, under a "loaded" toast. Say what happened, in the editor and in a toast.
+      const message = e instanceof Error ? e.message : String(e);
       console.error('[store] failed to load/serialize term:', e);
       currentTerm = undefined;
       termEpoch += 1;
-      set((s) => ({ termText: undefined, termLocations: [], termHints: [], profileStale: staleFor(s.profileTermEpoch) }));
+      set((s) => ({ termText: undefined, termLocations: [], termHints: [], termError: message, profileStale: staleFor(s.profileTermEpoch) }));
+      toast.error(`Could not render the term: ${message}`);
     }
   };
 
@@ -417,7 +427,7 @@ export const useStore = create<AppState>((set, get) => {
       // Drop every session-derived field so the screen collapses to a clean crashed state instead of
       // showing a populated-but-dead Session panel / stale term that contradicts the crash banner.
       redeemers: [], currentRedeemer: undefined, scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
-      termText: undefined, termLocations: [], termHints: [],
+      termText: undefined, termLocations: [], termHints: [], termError: undefined,
       machineStateLazy: undefined, contextsLazy: [], currentEnvLazy: undefined,
       breakpoints: [],
       error: CRASH_MSG, errorTone: 'crash',
@@ -585,7 +595,7 @@ export const useStore = create<AppState>((set, get) => {
         loading: true, locked: true, loadingPhase: PHASE.engine, scriptOnly: false, scriptHasContext: false, fileName, error: undefined, errorTone: undefined, finalStatus: undefined,
         budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
         machineStateLazy: undefined, contextsLazy: [], currentEnvLazy: undefined,
-        termText: undefined, termLocations: [], termHints: [],
+        termText: undefined, termLocations: [], termHints: [], termError: undefined,
         // A new script's term ids are unrelated to the previous one's — drop stale breakpoints
         // (the subsequent syncBreakpoints / next run pushes the now-empty list to the engine).
         breakpoints: [],
@@ -605,7 +615,7 @@ export const useStore = create<AppState>((set, get) => {
           status: 'stopped', redeemers, txId,
           currentRedeemer: redeemers.length ? CHOOSE_REDEEMER : NO_REDEEMERS_AVAILABLE,
         });
-        toast.success('Transaction loaded');
+        if (!get().termError) toast.success('Transaction loaded');
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
         // A failed load leaves no "loaded" indicators (stale fileName/txId would otherwise survive
@@ -636,7 +646,7 @@ export const useStore = create<AppState>((set, get) => {
         error: undefined, errorTone: undefined, finalStatus: undefined,
         budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
         machineStateLazy: undefined, contextsLazy: [], currentEnvLazy: undefined,
-        termText: undefined, termLocations: [], termHints: [],
+        termText: undefined, termLocations: [], termHints: [], termError: undefined,
         // A new script's term ids are unrelated to the previous one's — drop stale breakpoints
         // (the subsequent syncBreakpoints / next run pushes the now-empty list to the engine).
         breakpoints: [],
@@ -663,7 +673,7 @@ export const useStore = create<AppState>((set, get) => {
           error: undefined, errorTone: undefined, finalStatus: undefined, budget: undefined,
         });
         await pullInspectors();
-        toast.success('UPLC program loaded');
+        if (!get().termError) toast.success('UPLC program loaded');
       } catch (e) {
         bareProgram = undefined;
         const error = e instanceof Error ? e.message : String(e);
@@ -686,7 +696,7 @@ export const useStore = create<AppState>((set, get) => {
         error: undefined, errorTone: undefined, finalStatus: undefined,
         budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
         machineStateLazy: undefined, contextsLazy: [], currentEnvLazy: undefined,
-        termText: undefined, termLocations: [], termHints: [],
+        termText: undefined, termLocations: [], termHints: [], termError: undefined,
         // A new script's term ids are unrelated to the previous one's — drop stale breakpoints
         // (the subsequent syncBreakpoints / next run pushes the now-empty list to the engine).
         breakpoints: [],
@@ -715,7 +725,7 @@ export const useStore = create<AppState>((set, get) => {
           error: undefined, errorTone: undefined, finalStatus: undefined, budget: undefined,
         });
         await pullInspectors();
-        toast.success('Script + context loaded');
+        if (!get().termError) toast.success('Script + context loaded');
       } catch (e) {
         bareParts = undefined;
         const error = e instanceof Error ? e.message : String(e);
@@ -737,7 +747,7 @@ export const useStore = create<AppState>((set, get) => {
           currentRedeemer: redeemer, status: 'stopped',
           scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined, budget: undefined, currentTermId: undefined,
           machineStateLazy: undefined, contextsLazy: [], currentEnvLazy: undefined,
-          termText: undefined, termLocations: [], termHints: [],
+          termText: undefined, termLocations: [], termHints: [], termError: undefined,
           error: undefined, errorTone: undefined, finalStatus: undefined,
         });
         return;

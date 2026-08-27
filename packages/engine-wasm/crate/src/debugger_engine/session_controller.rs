@@ -267,7 +267,7 @@ impl SessionController {
 
     pub fn get_script(&self) -> Result<String, JsError> {
         let script = self.get_script_inner()?;
-        Ok(serde_json::to_string(&script)
+        Ok(script.to_json()
             .map_err(|e| DebuggerError::MachineError(e.to_string()))?)
     }
 

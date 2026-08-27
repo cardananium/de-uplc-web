@@ -200,53 +200,258 @@ pub fn term_to_either_term_or_id(term: &Term<NamedDeBruijn>, term_ids: &HashSet<
     }
 }
 
+enum TermFrame {
+    Delay { id: i32 },
+    Lambda { id: i32, parameter_name: String },
+    Apply { id: i32 },
+    Force { id: i32 },
+    Constr { id: i32, constructor_tag: usize, arity: usize },
+    Case { id: i32, branches: usize },
+}
+
+enum TermStep<'a> {
+    Visit(&'a Term<NamedDeBruijn>),
+    Build(TermFrame),
+}
+
 impl SerializableTerm {
     /// Convert a UPLC Term<NamedDeBruijn> to a serializable format
     pub fn from_uplc_term(term: &Term<NamedDeBruijn>) -> Self {
-        match term {
-            Term::Var { name, uniq_id } => SerializableTerm::Var {
-                id: *uniq_id as i32,
-                name: name.text.clone(),
-            },
-            Term::Delay { body, uniq_id } => SerializableTerm::Delay {
-                id: *uniq_id as i32,
-                term: Box::new(Self::from_uplc_term(body)),
-            },
-            Term::Lambda { parameter_name, body, uniq_id } => SerializableTerm::Lambda {
-                id: *uniq_id as i32,
-                parameter_name: parameter_name.text.clone(),
-                body: Box::new(Self::from_uplc_term(body)),
-            },
-            Term::Apply { function, argument, uniq_id } => SerializableTerm::Apply {
-                id: *uniq_id as i32,
-                function: Box::new(Self::from_uplc_term(function)),
-                argument: Box::new(Self::from_uplc_term(argument)),
-            },
-            Term::Constant { value, uniq_id } => SerializableTerm::Constant {
-                id: *uniq_id as i32,
-                constant: SerializableConstant::from_uplc_constant(value),
-            },
-            Term::Force { body, uniq_id } => SerializableTerm::Force {
-                id: *uniq_id as i32,
-                term: Box::new(Self::from_uplc_term(body)),
-            },
-            Term::Error { uniq_id } => SerializableTerm::Error {
-                id: *uniq_id as i32,
-            },
-            Term::Builtin { fun, uniq_id } => SerializableTerm::Builtin {
-                id: *uniq_id as i32,
-                fun: format!("{:?}", fun),
-            },
-            Term::Constr { tag, fields, uniq_id } => SerializableTerm::Constr {
-                id: *uniq_id as i32,
-                constructor_tag: *tag,
-                fields: fields.iter().map(|field| Self::from_uplc_term(field)).collect(),
-            },
-            Term::Case { constr, branches, uniq_id } => SerializableTerm::Case {
-                id: *uniq_id as i32,
-                constr: Box::new(Self::from_uplc_term(constr)),
-                branches: branches.iter().map(|branch| Self::from_uplc_term(branch)).collect(),
-            },
+        let mut work: Vec<TermStep> = vec![TermStep::Visit(term)];
+        let mut out: Vec<SerializableTerm> = Vec::new();
+
+        while let Some(step) = work.pop() {
+            match step {
+                TermStep::Visit(t) => match t {
+                    Term::Var { name, uniq_id } => out.push(SerializableTerm::Var {
+                        id: *uniq_id as i32,
+                        name: name.text.clone(),
+                    }),
+                    Term::Constant { value, uniq_id } => out.push(SerializableTerm::Constant {
+                        id: *uniq_id as i32,
+                        constant: SerializableConstant::from_uplc_constant(value),
+                    }),
+                    Term::Error { uniq_id } => out.push(SerializableTerm::Error {
+                        id: *uniq_id as i32,
+                    }),
+                    Term::Builtin { fun, uniq_id } => out.push(SerializableTerm::Builtin {
+                        id: *uniq_id as i32,
+                        fun: format!("{:?}", fun),
+                    }),
+                    Term::Delay { body, uniq_id } => {
+                        work.push(TermStep::Build(TermFrame::Delay { id: *uniq_id as i32 }));
+                        work.push(TermStep::Visit(body));
+                    }
+                    Term::Lambda { parameter_name, body, uniq_id } => {
+                        work.push(TermStep::Build(TermFrame::Lambda {
+                            id: *uniq_id as i32,
+                            parameter_name: parameter_name.text.clone(),
+                        }));
+                        work.push(TermStep::Visit(body));
+                    }
+                    Term::Force { body, uniq_id } => {
+                        work.push(TermStep::Build(TermFrame::Force { id: *uniq_id as i32 }));
+                        work.push(TermStep::Visit(body));
+                    }
+                    Term::Apply { function, argument, uniq_id } => {
+                        work.push(TermStep::Build(TermFrame::Apply { id: *uniq_id as i32 }));
+                        work.push(TermStep::Visit(argument));
+                        work.push(TermStep::Visit(function));
+                    }
+                    Term::Constr { tag, fields, uniq_id } => {
+                        work.push(TermStep::Build(TermFrame::Constr {
+                            id: *uniq_id as i32,
+                            constructor_tag: *tag,
+                            arity: fields.len(),
+                        }));
+                        for field in fields.iter().rev() {
+                            work.push(TermStep::Visit(field));
+                        }
+                    }
+                    Term::Case { constr, branches, uniq_id } => {
+                        work.push(TermStep::Build(TermFrame::Case {
+                            id: *uniq_id as i32,
+                            branches: branches.len(),
+                        }));
+                        for branch in branches.iter().rev() {
+                            work.push(TermStep::Visit(branch));
+                        }
+                        work.push(TermStep::Visit(constr));
+                    }
+                },
+                TermStep::Build(frame) => {
+                    let built = match frame {
+                        TermFrame::Delay { id } => SerializableTerm::Delay {
+                            id,
+                            term: Box::new(out.pop().expect("delay body")),
+                        },
+                        TermFrame::Lambda { id, parameter_name } => SerializableTerm::Lambda {
+                            id,
+                            parameter_name,
+                            body: Box::new(out.pop().expect("lambda body")),
+                        },
+                        TermFrame::Force { id } => SerializableTerm::Force {
+                            id,
+                            term: Box::new(out.pop().expect("force body")),
+                        },
+                        TermFrame::Apply { id } => {
+                            let argument = out.pop().expect("apply argument");
+                            let function = out.pop().expect("apply function");
+                            SerializableTerm::Apply {
+                                id,
+                                function: Box::new(function),
+                                argument: Box::new(argument),
+                            }
+                        }
+                        TermFrame::Constr { id, constructor_tag, arity } => {
+                            let fields = out.split_off(out.len() - arity);
+                            SerializableTerm::Constr { id, constructor_tag, fields }
+                        }
+                        TermFrame::Case { id, branches } => {
+                            let mut taken = out.split_off(out.len() - (branches + 1));
+                            let constr = taken.remove(0);
+                            SerializableTerm::Case {
+                                id,
+                                constr: Box::new(constr),
+                                branches: taken,
+                            }
+                        }
+                    };
+                    out.push(built);
+                }
+            }
+        }
+
+        out.pop().expect("the walk always leaves exactly one root term")
+    }
+}
+
+enum JsonStep<'a> {
+    Term(&'a SerializableTerm),
+    Raw(&'static str),
+}
+
+impl SerializableTerm {
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        use std::fmt::Write as _;
+
+        let mut out = String::new();
+        let mut work: Vec<JsonStep> = vec![JsonStep::Term(self)];
+
+        while let Some(step) = work.pop() {
+            let term = match step {
+                JsonStep::Raw(raw) => {
+                    out.push_str(raw);
+                    continue;
+                }
+                JsonStep::Term(term) => term,
+            };
+
+            match term {
+                SerializableTerm::Var { id, name } => {
+                    let name = serde_json::to_string(name)?;
+                    let _ = write!(out, r#"{{"term_type":"Var","id":{id},"name":{name}}}"#);
+                }
+                SerializableTerm::Error { id } => {
+                    let _ = write!(out, r#"{{"term_type":"Error","id":{id}}}"#);
+                }
+                SerializableTerm::Builtin { id, fun } => {
+                    let fun = serde_json::to_string(fun)?;
+                    let _ = write!(out, r#"{{"term_type":"Builtin","id":{id},"fun":{fun}}}"#);
+                }
+                SerializableTerm::Constant { id, constant } => {
+                    let constant = serde_json::to_string(constant)?;
+                    let _ = write!(out, r#"{{"term_type":"Constant","id":{id},"constant":{constant}}}"#);
+                }
+                SerializableTerm::Delay { id, term } => {
+                    let _ = write!(out, r#"{{"term_type":"Delay","id":{id},"term":"#);
+                    work.push(JsonStep::Raw("}"));
+                    work.push(JsonStep::Term(term));
+                }
+                SerializableTerm::Force { id, term } => {
+                    let _ = write!(out, r#"{{"term_type":"Force","id":{id},"term":"#);
+                    work.push(JsonStep::Raw("}"));
+                    work.push(JsonStep::Term(term));
+                }
+                SerializableTerm::Lambda { id, parameter_name, body } => {
+                    let parameter_name = serde_json::to_string(parameter_name)?;
+                    let _ = write!(
+                        out,
+                        r#"{{"term_type":"Lambda","id":{id},"parameterName":{parameter_name},"body":"#
+                    );
+                    work.push(JsonStep::Raw("}"));
+                    work.push(JsonStep::Term(body));
+                }
+                SerializableTerm::Apply { id, function, argument } => {
+                    let _ = write!(out, r#"{{"term_type":"Apply","id":{id},"function":"#);
+                    work.push(JsonStep::Raw("}"));
+                    work.push(JsonStep::Term(argument));
+                    work.push(JsonStep::Raw(r#","argument":"#));
+                    work.push(JsonStep::Term(function));
+                }
+                SerializableTerm::Constr { id, constructor_tag, fields } => {
+                    let _ = write!(
+                        out,
+                        r#"{{"term_type":"Constr","id":{id},"constructorTag":{constructor_tag},"fields":["#
+                    );
+                    work.push(JsonStep::Raw("]}"));
+                    for (i, field) in fields.iter().enumerate().rev() {
+                        work.push(JsonStep::Term(field));
+                        if i > 0 {
+                            work.push(JsonStep::Raw(","));
+                        }
+                    }
+                }
+                SerializableTerm::Case { id, constr, branches } => {
+                    let _ = write!(out, r#"{{"term_type":"Case","id":{id},"constr":"#);
+                    work.push(JsonStep::Raw("]}"));
+                    for (i, branch) in branches.iter().enumerate().rev() {
+                        work.push(JsonStep::Term(branch));
+                        if i > 0 {
+                            work.push(JsonStep::Raw(","));
+                        }
+                    }
+                    work.push(JsonStep::Raw(r#","branches":["#));
+                    work.push(JsonStep::Term(constr));
+                }
+            }
+        }
+
+        Ok(out)
+    }
+}
+
+fn take_children(node: &mut SerializableTerm, stack: &mut Vec<SerializableTerm>) {
+    let leaf = || SerializableTerm::Error { id: 0 };
+    match node {
+        SerializableTerm::Delay { term, .. } | SerializableTerm::Force { term, .. } => {
+            stack.push(std::mem::replace(term.as_mut(), leaf()));
+        }
+        SerializableTerm::Lambda { body, .. } => {
+            stack.push(std::mem::replace(body.as_mut(), leaf()));
+        }
+        SerializableTerm::Apply { function, argument, .. } => {
+            stack.push(std::mem::replace(function.as_mut(), leaf()));
+            stack.push(std::mem::replace(argument.as_mut(), leaf()));
+        }
+        SerializableTerm::Constr { fields, .. } => stack.append(fields),
+        SerializableTerm::Case { constr, branches, .. } => {
+            stack.push(std::mem::replace(constr.as_mut(), leaf()));
+            stack.append(branches);
+        }
+        SerializableTerm::Var { .. }
+        | SerializableTerm::Constant { .. }
+        | SerializableTerm::Error { .. }
+        | SerializableTerm::Builtin { .. } => {}
+    }
+}
+
+impl Drop for SerializableTerm {
+    fn drop(&mut self) {
+        let mut stack: Vec<SerializableTerm> = Vec::new();
+        take_children(self, &mut stack);
+        while let Some(mut node) = stack.pop() {
+            take_children(&mut node, &mut stack);
         }
     }
 }
