@@ -353,7 +353,7 @@ dependencies = [
 [[package]]
 name = "dehosk"
 version = "0.1.0"
-source = "git+https://github.com/cardananium/dehosk?rev=8f8b6a9cce22974e289e61a27a7f3dd5e6fc5228#8f8b6a9cce22974e289e61a27a7f3dd5e6fc5228"
+source = "git+https://github.com/cardananium/dehosk?rev=6f4ef75d1736f7efc373e31ed22e6b13e33964bf#6f4ef75d1736f7efc373e31ed22e6b13e33964bf"
 dependencies = [
  "clap",
  "csv",
