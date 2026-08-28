@@ -8,6 +8,7 @@ import { getGrammar, INITIAL, type StateStack } from './textmate';
 import { LANGUAGES, languageConfiguration } from './grammars';
 import { UPLC_THEME, UPLC_THEME_DARK, registerThemeApplier } from './theme';
 import { DEHOSK_LANG_ID, dehoskLanguage } from './dehosk-language';
+import { registerDehoskNavigation } from './dehosk-nav';
 
 export type MonacoNS = typeof import('monaco-editor');
 
@@ -57,6 +58,7 @@ async function doInit(): Promise<MonacoNS> {
       { open: '"', close: '"' },
     ],
   });
+  registerDehoskNavigation(monaco);
 
   monaco.editor.defineTheme(UPLC_THEME, { base: 'vs', inherit: true, colors: THEME_COLORS, rules: THEME_RULES });
   monaco.editor.defineTheme(UPLC_THEME_DARK, { base: 'vs-dark', inherit: true, colors: THEME_COLORS_DARK, rules: THEME_RULES_DARK });

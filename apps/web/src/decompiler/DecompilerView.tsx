@@ -72,6 +72,15 @@ export function DecompilerView() {
             ) : output ? (
               <Suspense fallback={<EditorFallback />}>
                 <CodeView content={output} language="dehosk" wordWrap="off" />
+                <div className="editor-statusbar">
+                  <span
+                    className="sb-hint"
+                    title={'Ctrl/Cmd+click or F12 — jump to definition · Shift+F12 — find all references · '
+                      + 'Ctrl/Cmd+Shift+O — go to symbol · Ctrl/Cmd+F — find in the output'}
+                  >
+                    Ctrl/Cmd+click — jump to definition · Shift+F12 — find references · Ctrl/Cmd+Shift+O — go to symbol
+                  </span>
+                </div>
               </Suspense>
             ) : (
               <div className="muted" style={{ padding: 24, textAlign: 'center' }}>
