@@ -15,7 +15,8 @@ import { decideBusy, type BusyMemo } from './busy-timing';
  */
 export function useBusyIndicator(busy: boolean, opts?: { delayMs?: number }): boolean {
   const memo = useRef<BusyMemo>({});
-  const delayMs = opts?.delayMs;
+  const heavy = useStore((s) => s.loadingHeavy);
+  const delayMs = opts?.delayMs ?? (heavy ? 0 : undefined);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {

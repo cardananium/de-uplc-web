@@ -167,22 +167,24 @@ export function App() {
       {/* left activity rail */}
       <nav className="app-rail" aria-label="Activity">
         <button
-          className={`chrome-button${debuggerView ? ' is-active' : ''}`}
+          className={`chrome-button rail-tab${debuggerView ? ' is-active' : ''}`}
           title="Debugger"
           aria-label="Debugger"
           aria-pressed={debuggerView}
           onClick={() => setView('debugger')}
         >
           <Codicon name="debug-alt" />
+          <span className="rail-tab-label" aria-hidden="true">Debugger</span>
         </button>
         <button
-          className={`chrome-button${!debuggerView ? ' is-active' : ''}`}
+          className={`chrome-button rail-tab${!debuggerView ? ' is-active' : ''}`}
           title="Decompiler"
           aria-label="Decompiler"
           aria-pressed={!debuggerView}
           onClick={() => setView('decompiler')}
         >
           <Codicon name="code" />
+          <span className="rail-tab-label" aria-hidden="true">Decompiler</span>
         </button>
         <span className="rail-spacer" />
         <button className="chrome-button" title="Keyboard shortcuts" aria-label="Keyboard shortcuts" onClick={showShortcuts}><Codicon name="question" /></button>

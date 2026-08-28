@@ -244,6 +244,26 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 .chrome-button:hover { background: var(--bg-subtle); color: var(--fg); }
 .chrome-button.is-active { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 
+/* Rail VIEW tabs: icon with its name set down the rail. The label is the tab's whole point, so the
+   button grows to fit it rather than the text being clipped to the 38px icon box. */
+.rail-tab {
+  height: auto;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 0 11px;
+}
+/* `vertical-rl` + a half turn = bottom-to-top, the orientation a left edge is read in. Uppercase
+   at this size because lowercase descenders (p, g) read as noise when rotated. */
+.rail-tab-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
 /* content area (sidebar + editor) */
 /* overflow:hidden so a stray wide child (long hash, log line) can never add a horizontal scrollbar
    or shift the layout; long content wraps at source, the editor/sidebar scroll internally. */

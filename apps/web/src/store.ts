@@ -19,6 +19,7 @@ import {
 import { connectEngine, type EngineHandle } from '@de-uplc/engine-worker';
 import { settingsStore, networkPrompt } from './platform/settings';
 import { useSettings, type TermView, type ProfileMetric, type ProfileScope } from './platform/settings';
+import { BUSY_HEAVY_SOURCE_CHARS } from './components/busy-timing';
 import { buildProfileIndex, type ProfileIndex } from './profile/profile-index';
 import { useTabsStore, TERM_TAB } from './editor/tabs-store';
 import { buildShareUrl, type UrlLaunch } from './url-launch';
@@ -58,6 +59,8 @@ interface AppState {
    *  interesting durations are inside `fillContextData`, so guessing them from out here would be
    *  fiction. Cleared in the same `finally` that clears `loading` / `locked`, on every path. */
   loadingPhase?: string;
+  /** True while a heavy script load is in flight; skips the busy-indicator delay. */
+  loadingHeavy: boolean;
   /** Bumped by `onFatalWorker`. The load indicators watch it because the promise they wrap can
    *  never settle when the worker dies (Comlink has no reject path), so a flag armed under the
    *  dead engine has to be told, not awaited. */
@@ -422,7 +425,7 @@ export const useStore = create<AppState>((set, get) => {
       crashEpoch: prev.crashEpoch + 1,
       ...PROFILE_RESET,
       profileRun: undefined, profileError: undefined,
-      status: 'empty', loading: false, locked: false, loadingPhase: undefined, scriptOnly: false, scriptHasContext: false, finalStatus: undefined,
+      status: 'empty', loading: false, locked: false, loadingPhase: undefined, loadingHeavy: false, scriptOnly: false, scriptHasContext: false, finalStatus: undefined,
       budget: undefined, currentTermId: undefined,
       // Drop every session-derived field so the screen collapses to a clean crashed state instead of
       // showing a populated-but-dead Session panel / stale term that contradicts the crash banner.
@@ -564,6 +567,7 @@ export const useStore = create<AppState>((set, get) => {
   return {
     status: 'empty',
     loading: false,
+    loadingHeavy: false,
     crashEpoch: 0,
     locked: false,
     scriptOnly: false,
@@ -630,7 +634,7 @@ export const useStore = create<AppState>((set, get) => {
       } finally {
         // Every exit clears the indicator — success, failure, AND the quietly-reset
         // network-cancelled path above, which returns through here like any other throw.
-        set({ loading: false, locked: false, loadingPhase: undefined });
+        set({ loading: false, locked: false, loadingPhase: undefined, loadingHeavy: false });
       }
     },
 
@@ -642,6 +646,7 @@ export const useStore = create<AppState>((set, get) => {
       set({
         ...PROFILE_RESET,
         loading: true, locked: true, loadingPhase: PHASE.engine, scriptOnly: true, scriptHasContext: false,
+        loadingHeavy: programSrc.length >= BUSY_HEAVY_SOURCE_CHARS,
         fileName: undefined, txId: undefined, redeemers: [], currentRedeemer: undefined,
         error: undefined, errorTone: undefined, finalStatus: undefined,
         budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
@@ -680,7 +685,7 @@ export const useStore = create<AppState>((set, get) => {
         set({ status: 'empty', scriptOnly: false, scriptHasContext: false, error, errorTone: 'load' });
         toast.error(`Failed to load program: ${error}`);
       } finally {
-        set({ loading: false, locked: false, loadingPhase: undefined });
+        set({ loading: false, locked: false, loadingPhase: undefined, loadingHeavy: false });
       }
     },
 
@@ -692,6 +697,7 @@ export const useStore = create<AppState>((set, get) => {
       set({
         ...PROFILE_RESET,
         loading: true, locked: true, loadingPhase: PHASE.engine, scriptOnly: true, scriptHasContext: !!parts.context,
+        loadingHeavy: parts.script.length >= BUSY_HEAVY_SOURCE_CHARS,
         fileName: undefined, txId: undefined, redeemers: [], currentRedeemer: undefined,
         error: undefined, errorTone: undefined, finalStatus: undefined,
         budget: undefined, currentTermId: undefined, logs: [], scriptHash: undefined, scriptPurpose: undefined, plutusLang: undefined,
@@ -732,7 +738,7 @@ export const useStore = create<AppState>((set, get) => {
         set({ status: 'empty', scriptOnly: false, scriptHasContext: false, error, errorTone: 'load' });
         toast.error(`Failed to load script: ${error}`);
       } finally {
-        set({ loading: false, locked: false, loadingPhase: undefined });
+        set({ loading: false, locked: false, loadingPhase: undefined, loadingHeavy: false });
       }
     },
 

@@ -22,6 +22,9 @@ export const BUSY_DELAY_MS = 200;
 /** How long the indicator stays up once shown, even if the work has already finished. */
 export const BUSY_MIN_VISIBLE_MS = 400;
 
+/** Source length past which a script load shows the busy indicator immediately. */
+export const BUSY_HEAVY_SOURCE_CHARS = 8192;
+
 /**
  * What the indicator remembers between evaluations. Both fields are timestamps on the caller's
  * clock — a MONOTONIC ms source (`useBusyIndicator` passes `performance.now()`); `decideBusy`
