@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TermIndex, type DebuggerTypes, type TermLocation } from '@de-uplc/core';
+import { TermIndex, type DebuggerTypes, type TermLocation } from '@cardananium/de-uplc-core';
 import {
   AUTO_RAISE_TARGET, RENDER_CAP, defaultSortKey, deriveReport, fmtThreshold, isReturnDominated,
   matchesText, rankIndices, topNodes,

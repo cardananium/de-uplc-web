@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { termIndexFor } from '@de-uplc/core';
+import { termIndexFor } from '@cardananium/de-uplc-core';
 import { useStore } from '../../store';
 import { useSettings } from '../../platform/settings';
 import { setProfileFilterFocus } from '../../editor/tabs-store';

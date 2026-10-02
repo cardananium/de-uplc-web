@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { buildMachineStateRoots, buildContextRoots, buildEnvRoots, type UplcNode } from '@de-uplc/core';
+import { buildMachineStateRoots, buildContextRoots, buildEnvRoots, type UplcNode } from '@cardananium/de-uplc-core';
 import { useStore, getSession } from '../store';
 import { Tree } from '../components/Tree';
 import { Codicon } from '../components/Codicon';

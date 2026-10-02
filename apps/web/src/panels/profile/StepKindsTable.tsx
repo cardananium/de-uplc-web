@@ -1,4 +1,4 @@
-import type { DebuggerTypes } from '@de-uplc/core';
+import type { DebuggerTypes } from '@cardananium/de-uplc-core';
 import { useStore } from '../../store';
 import { fmtInt, fmtPct } from '../../profile/format';
 import { metricWord } from '../../profile/derive';

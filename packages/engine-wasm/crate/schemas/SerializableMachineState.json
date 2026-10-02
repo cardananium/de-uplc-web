@@ -323,6 +323,26 @@
             "type",
             "bytes"
           ]
+        },
+        {
+          "description": "A ledger value (Plutus V3 from protocol version 11): currency symbols ascending, each with\nits token names ascending; quantities are decimal strings (signed 128-bit).",
+          "type": "object",
+          "properties": {
+            "entries": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SerializableValueAsset"
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "Value"
+            }
+          },
+          "required": [
+            "type",
+            "entries"
+          ]
         }
       ]
     },
@@ -1017,6 +1037,18 @@
           "required": [
             "type"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Value"
+            }
+          },
+          "required": [
+            "type"
+          ]
         }
       ]
     },
@@ -1147,6 +1179,41 @@
             "term_id"
           ]
         }
+      ]
+    },
+    "SerializableValueAsset": {
+      "type": "object",
+      "properties": {
+        "currency": {
+          "description": "Hex-encoded currency symbol (policy id; empty for ada).",
+          "type": "string"
+        },
+        "tokens": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SerializableValueToken"
+          }
+        }
+      },
+      "required": [
+        "currency",
+        "tokens"
+      ]
+    },
+    "SerializableValueToken": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Hex-encoded token name.",
+          "type": "string"
+        },
+        "quantity": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "quantity"
       ]
     }
   }

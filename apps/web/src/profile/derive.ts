@@ -15,7 +15,7 @@
 // number the UI is required to print: the auto-raised threshold, the tail count and its cost, and
 // the render ceiling.
 
-import type { TermIndex, TermLocation } from '@de-uplc/core';
+import type { TermIndex, TermLocation } from '@cardananium/de-uplc-core';
 import type { ProfileMetric, ProfileScope } from '../platform/settings';
 import { nodeLabel } from './heat';
 import type { ProfileIndex, ProfileRow } from './profile-index';

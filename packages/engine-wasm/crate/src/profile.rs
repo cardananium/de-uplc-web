@@ -331,6 +331,7 @@ impl ProfileRunner {
     pub(crate) fn new(
         language: Language,
         cost_model: CostModel,
+        protocol_major_version: u16,
         entry_term: &Term<NamedDeBruijn>,
         term_ids: &HashSet<i32>,
         attribution: ProfileAttribution,
@@ -338,8 +339,9 @@ impl ProfileRunner {
         let startup = cost_model.machine_costs.get(StepKind::StartUp);
         let image_budget = ExBudget::max();
         let machine = Box::new(
-            ManualMachine::new_debug(
+            ManualMachine::new_debug_with_protocol(
                 language,
+                protocol_major_version,
                 cost_model,
                 image_budget,
                 PROFILE_SLIPPAGE,

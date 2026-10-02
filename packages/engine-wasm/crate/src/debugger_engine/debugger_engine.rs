@@ -260,6 +260,7 @@ impl DebuggerEngine {
             Some(script_context),
             None, // raw_context_data — tx mode has the typed ScriptContext above
             cost_model,
+            self.protocol_params.protocol_version.major as u16,
             upper_bound_budget,
             Some(declared_budget),
             redeemer_str.to_string(),
@@ -497,6 +498,7 @@ pub fn new_session_from_program(program_src: &str, language: &str) -> Result<Ses
         None, // no script context
         None, // no raw context data
         cost_model,
+        VAN_ROSSEM_PROTOCOL_VERSION, // no tx, so no chain protocol version: current mainnet
         ExBudget::max(), // machine cap — don't budget-error while debugging
         None,            // nothing declared ExUnits here, so there is no limit to report
         String::new(),   // no redeemer
@@ -555,7 +557,7 @@ struct PartsConfig {
     #[serde(default, deserialize_with = "lenient_i64_list")]
     ex_units: Option<Vec<i64>>,
     /// Protocol major version — selects builtin semantics (>= 11 = Van Rossem / PV11 UTF-8 string
-    /// costing). Only consulted when `cost_models` is given. Default: VAN_ROSSEM (current mainnet).
+    /// costing, value builtins). Default: VAN_ROSSEM (current mainnet).
     #[serde(default)]
     protocol_version: Option<u16>,
     /// What the script is being run FOR, as a short free-form label ("spend", "Spending #0", …).
@@ -638,13 +640,10 @@ pub fn new_session_from_parts(config_json: &str) -> Result<SessionController, Js
         }
         None => None,
     };
+    // No tx here, so no chain protocol version — default to VAN_ROSSEM (current mainnet).
+    let protocol_major_version = cfg.protocol_version.unwrap_or(VAN_ROSSEM_PROTOCOL_VERSION);
     let cost_model = match &cfg.cost_models {
-        // No tx here, so no chain protocol version — default to VAN_ROSSEM (current mainnet).
-        Some(costs) => initialize_cost_model_with_protocol(
-            &lang,
-            cfg.protocol_version.unwrap_or(VAN_ROSSEM_PROTOCOL_VERSION),
-            costs,
-        ),
+        Some(costs) => initialize_cost_model_with_protocol(&lang, protocol_major_version, costs),
         None => match lang {
             Language::PlutusV1 => CostModel::v1(),
             Language::PlutusV2 => CostModel::v2(),
@@ -658,6 +657,7 @@ pub fn new_session_from_parts(config_json: &str) -> Result<SessionController, Js
         None,        // no typed ScriptContext
         raw_context, // raw context Data (rendered by "Show context")
         cost_model,
+        protocol_major_version,
         ExBudget::max(),
         declared_ex_units(cfg.ex_units.as_ref()), // whatever the link carried, or no limit at all
         String::new(),

@@ -15,8 +15,8 @@ import {
   type DebuggerTypes,
   type TermLocation,
   type TermHintInfo,
-} from '@de-uplc/core';
-import { connectEngine, type EngineHandle } from '@de-uplc/engine-worker';
+} from '@cardananium/de-uplc-core';
+import { connectEngine, type EngineHandle } from '@cardananium/de-uplc-engine-worker';
 import { settingsStore, networkPrompt } from './platform/settings';
 import { useSettings, type TermView, type ProfileMetric, type ProfileScope } from './platform/settings';
 import { BUSY_HEAVY_SOURCE_CHARS } from './components/busy-timing';

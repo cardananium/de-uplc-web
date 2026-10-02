@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DebuggerTypes } from '@de-uplc/core';
+import type { DebuggerTypes } from '@cardananium/de-uplc-core';
 import {
   BUILTIN_GROUPS, CLASSIFIED_BUILTINS, builtinTotals, dataDecoding, groupBuiltins, groupOf,
 } from './builtin-groups';

@@ -115,6 +115,7 @@ export class TypeNode implements UplcNode {
             case 'Bls12_381G2Element':
             case 'Bls12_381MlResult': iconName = 'symbol-key'; break;
             case 'Data': iconName = 'symbol-json'; break;
+            case 'Value': iconName = 'symbol-struct'; break;
             default: iconName = 'symbol-type';
         }
         return { label: `${this.label} (${this.type.type})`, collapsible: true, icon: iconName, contextValue: 'uplcNode' };
@@ -133,6 +134,7 @@ export class TypeNode implements UplcNode {
             case 'Bls12_381G2Element': return [new SimpleNode('BLS12-381 G2 Element')];
             case 'Bls12_381MlResult': return [new SimpleNode('BLS12-381 Miller Loop Result')];
             case 'Data': return [new SimpleNode('PlutusData')];
+            case 'Value': return [new SimpleNode('Value')];
             default: return [new SimpleNode(`Unknown type: ${(t as { type: string }).type}`)];
         }
     }

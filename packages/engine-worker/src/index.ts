@@ -17,7 +17,7 @@ export interface EngineHandle {
  * The caller owns worker creation — in a Vite app that means
  * `new Worker(new URL('./engine.worker.ts', import.meta.url), { type: 'module' })`,
  * where that worker entry can inject the WASM URL via Vite's `?url` import. This keeps
- * @de-uplc/engine-worker free of bundler-specific syntax.
+ * @cardananium/de-uplc-engine-worker free of bundler-specific syntax.
  */
 export function connectEngine(endpoint: Worker | Endpoint, onFatal?: (info: string) => void): EngineHandle {
   const api = wrap<IWasmEngineApi>(endpoint as Endpoint) as Remote<IWasmEngineApi>;

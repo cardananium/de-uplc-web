@@ -829,6 +829,7 @@ fn get_constant_type_only(constant: &uplc::ast::Constant) -> LazyLoadable<Serial
         uplc::ast::Constant::Bls12_381G1Element(_) => ("Bls12_381G1Element".to_string(), "G1 point".to_string(), None),
         uplc::ast::Constant::Bls12_381G2Element(_) => ("Bls12_381G2Element".to_string(), "G2 point".to_string(), None),
         uplc::ast::Constant::Bls12_381MlResult(_) => ("Bls12_381MlResult".to_string(), "ML result".to_string(), None),
+        uplc::ast::Constant::Value(v) => ("Value".to_string(), format!("{} policies", v.outer_size()), Some(v.outer_size())),
     };
     
     LazyLoadable::type_only(type_name, kind, length)
@@ -948,6 +949,8 @@ pub fn from_uplc_constant_lazy(
                 blst::blst_bendian_from_fp12(buffer.as_mut_ptr(), elem.as_ref());
                 buffer
             }),
+        },        Constant::Value(value) => SerializableConstantLazy::Value {
+            entries: crate::serializer::SerializableValueAsset::from_uplc_value(value),
         },
     }
 }

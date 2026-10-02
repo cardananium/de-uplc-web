@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DataSource, LazyKind } from '@de-uplc/core';
+import type { DataSource, LazyKind } from '@cardananium/de-uplc-core';
 
 // App-managed editor tab bar, replacing the extension's vscode.window.tabGroups.
 // The "Term" tab is implicit (id `term`, always present). Opened tabs are either:

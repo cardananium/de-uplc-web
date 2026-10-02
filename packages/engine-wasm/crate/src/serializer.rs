@@ -137,6 +137,44 @@ pub enum SerializableConstant {
         #[serde(rename = "bytes")]
         bytes: String, // hex-encoded Fp12 element (576 bytes)
     },
+    /// A ledger value (Plutus V3 from protocol version 11): currency symbols ascending, each with
+    /// its token names ascending; quantities are decimal strings (signed 128-bit).
+    #[serde(rename = "Value")]
+    Value { entries: Vec<SerializableValueAsset> },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+pub struct SerializableValueAsset {
+    /// Hex-encoded currency symbol (policy id; empty for ada).
+    pub currency: String,
+    pub tokens: Vec<SerializableValueToken>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+pub struct SerializableValueToken {
+    /// Hex-encoded token name.
+    pub name: String,
+    pub quantity: String,
+}
+
+impl SerializableValueAsset {
+    pub fn from_uplc_value(value: &uplc::ast::Value) -> Vec<Self> {
+        value
+            .clone()
+            .into_entries()
+            .into_iter()
+            .map(|(currency, tokens)| SerializableValueAsset {
+                currency: hex::encode(currency),
+                tokens: tokens
+                    .into_iter()
+                    .map(|(name, quantity)| SerializableValueToken {
+                        name: hex::encode(name),
+                        quantity: quantity.to_string(),
+                    })
+                    .collect(),
+            })
+            .collect()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
@@ -172,6 +210,8 @@ pub enum SerializableType {
     Bls12_381G2Element,
     #[serde(rename = "Bls12_381MlResult")]
     Bls12_381MlResult,
+    #[serde(rename = "Value")]
+    Value,
 }
 
 /// Helper function to convert a term to EitherTermOrId based on whether its ID is in the set
@@ -496,6 +536,9 @@ impl SerializableConstant {
             Constant::Bls12_381MlResult(result) => SerializableConstant::Bls12_381MlResult {
                 bytes: serialize_bls_fp12_element(result),
             },
+            Constant::Value(value) => SerializableConstant::Value {
+                entries: SerializableValueAsset::from_uplc_value(value),
+            },
         }
     }
 }
@@ -519,6 +562,7 @@ impl SerializableType {
             Type::Bls12_381G1Element => SerializableType::Bls12_381G1Element,
             Type::Bls12_381G2Element => SerializableType::Bls12_381G2Element,
             Type::Bls12_381MlResult => SerializableType::Bls12_381MlResult,
+            Type::Value => SerializableType::Value,
         }
     }
 }
@@ -696,6 +740,8 @@ pub enum SerializableConstantLazy {
         #[serde(rename = "bytes")]
         bytes: String,
     },
+    #[serde(rename = "Value")]
+    Value { entries: Vec<SerializableValueAsset> },
 }
 
 impl SerializableTermLazy {
@@ -1033,6 +1079,7 @@ pub fn navigate_to_constant_lazy(
         | (Constant::Bls12_381G1Element(_), _) 
         | (Constant::Bls12_381G2Element(_), _) 
         | (Constant::Bls12_381MlResult(_), _) 
+        | (Constant::Value(_), _) 
         | (Constant::Data(_), _) => {
             // Path is not empty for a terminal type - this shouldn't happen in normal flow
             // Just return the constant itself

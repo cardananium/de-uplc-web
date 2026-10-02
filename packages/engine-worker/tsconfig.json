@@ -10,8 +10,8 @@
     "types": [],
     "baseUrl": ".",
     "paths": {
-      "@de-uplc/core": ["../core/src/index.ts"],
-      "@de-uplc/engine-wasm": ["../engine-wasm/pkg/de_uplc.d.ts"]
+      "@cardananium/de-uplc-core": ["../core/src/index.ts"],
+      "@cardananium/de-uplc-engine-wasm": ["../engine-wasm/pkg/de_uplc.d.ts"]
     }
   },
   "include": ["src"]

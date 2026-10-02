@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DebuggerTypes, TermLocation } from '@de-uplc/core';
+import type { DebuggerTypes, TermLocation } from '@cardananium/de-uplc-core';
 import { fmtPct } from './format';
 import { buildProfileIndex } from './profile-index';
 

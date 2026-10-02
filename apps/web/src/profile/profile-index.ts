@@ -11,7 +11,7 @@
 // only reorders the report table). So it is rebuilt on `setProfileMetric` and `setTermView`,
 // and on nothing else.
 
-import { termIndexFor, type DebuggerTypes, type TermLocation, type TermView } from '@de-uplc/core';
+import { termIndexFor, type DebuggerTypes, type TermLocation, type TermView } from '@cardananium/de-uplc-core';
 import type { ProfileMetric } from '../platform/settings';
 import { bucketOf, HOT_BUCKET, NO_BUCKET, type LaneContext, type LaneStats } from './heat';
 

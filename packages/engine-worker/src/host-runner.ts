@@ -5,7 +5,7 @@ import type {
   DebuggerContext,
   UtxoReference,
   DebuggerTypes,
-} from '@de-uplc/core';
+} from '@cardananium/de-uplc-core';
 import type { IWasmEngineApi } from './worker-api';
 
 const decoder = new TextDecoder();

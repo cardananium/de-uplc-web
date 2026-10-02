@@ -182,6 +182,7 @@ function constantView(c: ConstantLazy, base: string): NodeView {
   else if (c.type === 'Bls12_381G2Element') ({ label, collapsible } = valuePreview(`${base}: BLS G2 0x`, c.serialized));
   else if (c.type === 'Bls12_381MlResult') ({ label, collapsible } = valuePreview(`${base}: BLS ML 0x`, c.bytes));
   else if (c.type === 'Data') { label = `${base} (Data)`; collapsible = true; }
+  else if (c.type === 'Value') { label = `${base}: Value (${c.entries.length} policies)`; collapsible = c.entries.length > 0; }
   else if (c.type === 'Unit') { label = `${base} (Unit)`; collapsible = false; }
   else { label = `${base} (${(c as { type: string }).type})`; collapsible = false; }
   return { label, collapsible, icon, contextValue: 'uplcNode' };
@@ -343,6 +344,11 @@ function childrenFor(
         case 'Bls12_381G1Element': return c.serialized.length > PREVIEW_LEN ? [fullValueNode(`0x${c.serialized}`)] : [];
         case 'Bls12_381G2Element': return c.serialized.length > PREVIEW_LEN ? [fullValueNode(`0x${c.serialized}`)] : [];
         case 'Bls12_381MlResult': return c.bytes.length > PREVIEW_LEN ? [fullValueNode(`0x${c.bytes}`)] : [];
+        // One row per currency symbol, its tokens inline (ada's currency symbol is empty).
+        case 'Value':
+          return c.entries.map((a) => new SimpleNode(
+            `#${a.currency || '(ada)'}: ${a.tokens.map((t) => `#${t.name} = ${t.quantity}`).join(', ')}`,
+          ));
         default: return [];
       }
     }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type * as MonacoT from 'monaco-editor';
-import { termAtLineForBreakpoint, termIndexFor, type TermHintInfo, type TermLocation, type TermView } from '@de-uplc/core';
+import { termAtLineForBreakpoint, termIndexFor, type TermHintInfo, type TermLocation, type TermView } from '@cardananium/de-uplc-core';
 import { ensureMonaco, type MonacoNS } from './monaco';
 import { currentThemeName } from './theme';
 import { setTermFindHandler } from './editor-actions';

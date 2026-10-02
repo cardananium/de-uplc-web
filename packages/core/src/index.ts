@@ -1,5 +1,5 @@
 /**
- * @de-uplc/core — platform-agnostic core for the de-uplc debugger.
+ * @cardananium/de-uplc-core — platform-agnostic core for the de-uplc debugger.
  *
  * Contains NO `vscode`, `fs`, `path`, `react`, DOM or worker globals (enforced via eslint
  * `no-restricted-imports`). The platform supplies behaviour through the ports in `./ports`.

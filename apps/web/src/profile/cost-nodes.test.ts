@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TermIndex, type DebuggerTypes, type TermLocation } from '@de-uplc/core';
+import { TermIndex, type DebuggerTypes, type TermLocation } from '@cardananium/de-uplc-core';
 import { COLLAPSE_SHARE, CostNode, CostTree, costRoots, enclosingNodes } from './cost-nodes';
 import { buildProfileIndex } from './profile-index';
 

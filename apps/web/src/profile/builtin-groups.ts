@@ -12,7 +12,7 @@
 // A name this table does not know (a future builtin the engine grows) falls into `control` instead
 // of vanishing — an unclassified row must still be counted somewhere.
 
-import type { DebuggerTypes } from '@de-uplc/core';
+import type { DebuggerTypes } from '@cardananium/de-uplc-core';
 import type { ProfileMetric } from '../platform/settings';
 
 export type BuiltinGroupId = 'data' | 'equality' | 'list' | 'arith' | 'crypto' | 'control';

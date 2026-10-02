@@ -35,6 +35,23 @@ describe('serializeTermUplc — canonical UPLC rendering', () => {
     expect(serializeTermUplc({ term_type: 'Error', id: 9 }).text).toBe('(error)');
   });
 
+  it('renders value constants as the uplc crate does', () => {
+    const value: Constant = {
+      type: 'Value',
+      entries: [
+        { currency: '', tokens: [{ name: '', quantity: '2000000' }] },
+        { currency: 'aa', tokens: [{ name: 'bb', quantity: '7' }, { name: 'cc', quantity: '-5' }] },
+      ],
+    };
+    expect(serializeTermUplc({ term_type: 'Constant', id: 1, constant: value }).text).toBe(
+      '(con value [(#, [(#, 2000000)]), (#aa, [(#bb, 7), (#cc, -5)])])',
+    );
+    const list: Constant = { type: 'ProtoList', elementType: { type: 'Value' }, values: [value] };
+    expect(serializeTermUplc({ term_type: 'Constant', id: 1, constant: list }).text).toBe(
+      '(con (list value) [[(#, [(#, 2000000)]), (#aa, [(#bb, 7), (#cc, -5)])]])',
+    );
+  });
+
   it('renders constants: bytestring, bool, unit, list and data', () => {
     const con = (c: Constant): string =>
       serializeTermUplc({ term_type: 'Constant', id: 1, constant: c }).text;

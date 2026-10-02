@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "description": "de-uplc as a standalone web app (monorepo).",
-  "comment": "Workspace globs live in pnpm-workspace.yaml. The root package.json intentionally omits an npm \"workspaces\" field: @de-uplc/* are resolved via Vite aliases (M3), and npm chokes on the packages' pnpm-style \"workspace:*\" deps. Switch to pnpm to use real workspace linking.",
+  "comment": "Workspace globs live in pnpm-workspace.yaml. The root package.json intentionally omits an npm \"workspaces\" field: @cardananium/de-uplc-* are resolved via Vite aliases (M3), and npm chokes on the packages' pnpm-style \"workspace:*\" deps. Switch to pnpm to use real workspace linking.",
   "scripts": {
     "typecheck": "tsc --noEmit -p packages/core/tsconfig.json && tsc --noEmit -p packages/engine-worker/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json",
     "typecheck:core": "tsc --noEmit -p packages/core/tsconfig.json",

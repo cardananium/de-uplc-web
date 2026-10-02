@@ -49,6 +49,9 @@ pub struct SessionController {
     // get_tx_script_context falls back to serializing this as a Data tree when `context` is None.
     raw_context_data: Option<PlutusData>,
     cost_model: CostModel,
+    /// Selects the builtin semantics the machine runs with (and so the costing of string builtins
+    /// and the availability of the value builtins).
+    protocol_major_version: u16,
     term_ids: HashSet<i32>,
     version: u64,
     // The profile run lives on its OWN machine (see profile.rs), so it survives stepping the debug
@@ -66,6 +69,7 @@ impl SessionController {
         script_context: Option<ScriptContext>,
         raw_context_data: Option<PlutusData>,
         cost_model: CostModel,
+        protocol_major_version: u16,
         upper_bound_budget: ExBudget,
         declared_budget: Option<ExBudget>,
         redeemer: String,
@@ -87,8 +91,9 @@ impl SessionController {
             });
         let program_version = program.version;
         let entry_term = Box::new(program.term);
-        let machine = Box::new(ManualMachine::new(
+        let machine = Box::new(ManualMachine::new_with_protocol(
             language.clone(),
+            protocol_major_version,
             cost_model.clone(),
             upper_bound_budget.clone(),
             DEFAULT_SLIPPAGE,
@@ -115,6 +120,7 @@ impl SessionController {
             context: script_context,
             raw_context_data,
             cost_model,
+            protocol_major_version,
             term_ids,
             version: 0,
             profile_runner: None,
@@ -343,6 +349,7 @@ impl SessionController {
         self.profile_runner = Some(Box::new(ProfileRunner::new(
             self.language.clone(),
             self.cost_model.clone(),
+            self.protocol_major_version,
             &self.entry_term,
             &self.term_ids,
             ProfileAttribution::ApplySite,
@@ -407,8 +414,9 @@ impl SessionController {
         self.version += 1;
         
         // Create a new machine with the original entry term and initial budget
-        let new_machine = ManualMachine::new(
+        let new_machine = ManualMachine::new_with_protocol(
             self.language.clone(),
+            self.protocol_major_version,
             self.cost_model.clone(),
             self.image_budget.clone(),
             DEFAULT_SLIPPAGE,

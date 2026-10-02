@@ -1,8 +1,8 @@
 // Dedicated decompiler worker: instantiates the dehosk WASM (with its 64 MB shadow stack) once and
 // exposes `decompile` over Comlink. Kept off the main thread so deep/slow decompiles never block UI.
 import * as Comlink from 'comlink';
-import init, { decompile_uplc, options_catalogue } from '@de-uplc/decompiler-wasm';
-import wasmUrl from '@de-uplc/decompiler-wasm/de_uplc_decompiler_wasm_bg.wasm?url';
+import init, { decompile_uplc, options_catalogue } from '@cardananium/de-uplc-decompiler-wasm';
+import wasmUrl from '@cardananium/de-uplc-decompiler-wasm/de_uplc_decompiler_wasm_bg.wasm?url';
 
 let ready: Promise<void> | undefined;
 const ensureReady = (): Promise<void> => (ready ??= init({ module_or_path: wasmUrl }).then(() => undefined));

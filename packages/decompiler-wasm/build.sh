@@ -61,7 +61,7 @@ if command -v wasm-opt >/dev/null 2>&1; then
 fi
 
 # wasm-bindgen does not emit package.json; Vite aliases this directory as
-# `@de-uplc/decompiler-wasm` and needs a `main` field.
+# `@cardananium/de-uplc-decompiler-wasm` and needs a `main` field.
 cat > "$OUT_DIR/package.json" <<'JSON'
 {
   "name": "de-uplc-decompiler-wasm",

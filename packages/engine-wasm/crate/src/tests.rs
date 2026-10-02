@@ -11,7 +11,7 @@ use pallas_primitives::conway::Language;
 use uplc::{
     ast::{Constant, NamedDeBruijn, Term},
     builtins::DefaultFunction,
-    machine::{cost_model::CostModel, Context, TERM_COUNT},
+    machine::{cost_model::CostModel, runtime::VAN_ROSSEM_PROTOCOL_VERSION, Context, TERM_COUNT},
 };
 
 const TX_HEX: &str = "84a900838258206153c1e9a628fc2bc1ebc82d1f6b6d360c3f5a895171cfd8a792541ab51f7509018258206153c1e9a628fc2bc1ebc82d1f6b6d360c3f5a895171cfd8a792541ab51f750902825820cb78d0612a8a54e4cbe43c90e23dc7739f0b27fffbd7caa5368d9b98047601b1000183a400581d7118c91bdff54ad8f4d3618818f36b99e401caa7eab153b42f51311cb001821a002297b4a2581c9e3ca7a4d3ae25b02b1ce833b8d85bd8a6a8fda186a93a0bc504d454a14001581cd30ee8c513b3fabada55d802a5ca5bb12e43b42027017309ed71ed4ba14001028201d8184dd8799f1b00003b1e458e2080ff03d81858c68200830304868200581cde4abaf30e894ec9243b8bb97ad7414b1d3086833ad8bf12d10130d08200581caf62c226e169c1fb4e84eb4286bac6bfda702ecf3a49f9fdbe5bf78f8200581cd8c1b4ad263333c687291894fb466a3bc1429565c2541e54b8901e158200581c5d5bbb9f55ea3524307dd6ed28e72b156f60ffc181cc20b89f2f13338200581cb6ee5605641b0f573312699348d19e71765d0010a4cac2c4fc9678178200581cde398fc701ce1b4adb7119d68c1d9710cfb70dec6989e31acc6d274f82583901de4abaf30e894ec9243b8bb97ad7414b1d3086833ad8bf12d10130d06a60e1593e83c2753d38ee6183d1d7cdb0a1c5cba657c798885122a6821a001b9f18a4581c6ac8ef33b510ec004fe11585f7c5a9f0c07f0c23428ab4f29c1d7d10a1444d454c441a004c4b40581ca0028f350aaabe0545fdcb56b039bfb08e4bb4d8c4d7c3c7d481c235a145484f534b591a0134fd9a581ca2944573e99d2ed3055b808eaa264f0bf119e01fc6b18863067c63e4a1444d454c441b000000037e2100d0581cb06729158210bf1ba13f8f3d7d422a918d3eaa82561a705552a2568ba158194d656c642042616e6b204d616e6167657220763120333939370182583901de4abaf30e894ec9243b8bb97ad7414b1d3086833ad8bf12d10130d06a60e1593e83c2753d38ee6183d1d7cdb0a1c5cba657c798885122a61a1a895ce7021a00042ee309a2581c4d564c6e31f771d71471437ea9f0e60038be09619755f8720eb093cda14020581ca2944573e99d2ed3055b808eaa264f0bf119e01fc6b18863067c63e4a1444d454c443b00000da475abefff0b58201b22ceb7916b9a373af4c0bcd14d59bfc3f0bb88702f5f6214463ae2dc94a9df0d818258206153c1e9a628fc2bc1ebc82d1f6b6d360c3f5a895171cfd8a792541ab51f7509021082583901de4abaf30e894ec9243b8bb97ad7414b1d3086833ad8bf12d10130d06a60e1593e83c2753d38ee6183d1d7cdb0a1c5cba657c798885122a61a1a87aa79111a000646551283825820125192e26ab0fedcfb32d54176d4cffdbde39b22f68d13f64c85bc7d64bd71a501825820125192e26ab0fedcfb32d54176d4cffdbde39b22f68d13f64c85bc7d64bd71a503825820cb78d0612a8a54e4cbe43c90e23dc7739f0b27fffbd7caa5368d9b98047601b100a2008482582059b84d8bda14d930893c601db44a4868206bb86e4d413637e19f9e8fb48e1103584051a8a5f8725842b78877e9852c6277bae5bb4b67cdbfe12311b63a64b1097eccafb8c26012e713b45842652fa5e2490f9ecdbdb4cb8a5b5006a529e1d814a20f825820772009ced9a45528d3a8b917eedd09949b724c07d7e0ffb1bced31dd0692acc85840cf655e22856912723907977cade87a887cba8e9e928d61efa6c600c03d4155f9b0caa76ec59270a6dbfb9091258106584416ea24ac68a3ea6de9c33065782405825820485e86a93ed036d20336391aab0419bf4cf2a7b47fbe7b62f8a0fa912954ecb8584051af180e31ce6baca4b404e7a3d4b942362dd36938dc2e3fe86dfb9388bc3ddd290821850080d8bf2e92f1d43e36c6cfcedb6f2bbf1823bec0e6aafbe113c3008258209e0fc2bceae4ffe26fffd8a91dcc7cd4578843415434ff565696b5ffd5ec1e725840dc28ca94bfd9070507e4ed8223afdd3f08e10790f6a86c08111523defa7fa84b6851c7f4276d25757a2f945cb72b9609e687e39085905ce33f04986b9c83af010582840002d87980821a0004bd501a07f45cee840101d87a80821a000191e71a02b3b3f4F5F6";
@@ -613,7 +613,14 @@ fn row(profile: &SerializableProfile, term_id: i32) -> &ProfileTerm {
 fn runner_for(term: &Term<NamedDeBruijn>, attribution: ProfileAttribution) -> ProfileRunner {
     let mut ids = HashSet::new();
     collect_ids(term, &mut ids);
-    ProfileRunner::new(Language::PlutusV2, CostModel::default(), term, &ids, attribution)
+    ProfileRunner::new(
+        Language::PlutusV2,
+        CostModel::default(),
+        VAN_ROSSEM_PROTOCOL_VERSION,
+        term,
+        &ids,
+        attribution,
+    )
         .expect("the profile machine is built from the entry term")
 }
 
@@ -791,4 +798,50 @@ fn deep_term_builds_serializes_and_drops_without_overflow() {
     assert_eq!(json.matches(r#""term_type":"Error""#).count(), 1);
 
     drop(serializable);
+}
+
+fn run_to_end(session: &mut SessionController) -> String {
+    loop {
+        let result: serde_json::Value = serde_json::from_str(&session.step().unwrap()).unwrap();
+        let status = result["status"]["status_type"].as_str().unwrap().to_string();
+        if status != "Ready" {
+            return status;
+        }
+    }
+}
+
+/// Value constants and the value builtins run under the current protocol, and a `Value` constant
+/// serializes as currency → token → quantity entries in both the eager and the lazy state.
+#[test]
+fn value_builtins_step_under_van_rossem() {
+    let src = "(program 1.1.0 [(builtin insertCoin) (con bytestring #aa) (con bytestring #bb) \
+               (con integer 7) (con value [(#aa, [(#cc, 5)])])])";
+    let mut session = new_session_from_program(src, "v3").unwrap();
+    assert_eq!(run_to_end(&mut session), "Done");
+
+    let state = session.get_machine_state().unwrap();
+    assert!(state.contains(r#""type":"Value""#), "{state}");
+    assert!(state.contains(r#""currency":"aa""#), "{state}");
+    assert!(state.contains(r#""name":"bb","quantity":"7""#), "{state}");
+    assert!(state.contains(r#""name":"cc","quantity":"5""#), "{state}");
+
+    let lazy = session.get_machine_state_lazy(String::new(), true).unwrap();
+    assert!(lazy.contains(r#""name":"bb","quantity":"7""#), "{lazy}");
+}
+
+/// The protocol version a parts session carries reaches the stepper: before Van Rossem a V3
+/// program holding a `Value` constant is refused, as the ledger would refuse it.
+#[test]
+fn value_constant_refused_before_van_rossem() {
+    let config = |protocol: u16| {
+        serde_json::json!({
+            "script": "(program 1.1.0 (con value [(#aa, [(#cc, 5)])]))",
+            "language": "v3",
+            "protocol_version": protocol,
+        })
+        .to_string()
+    };
+    assert!(new_session_from_parts(&config(10)).is_err());
+    let mut session = new_session_from_parts(&config(11)).unwrap();
+    assert_eq!(run_to_end(&mut session), "Done");
 }

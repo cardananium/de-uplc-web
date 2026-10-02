@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { buildNodeChildren, type DataSource, type LazyKind, type UplcNode } from '@de-uplc/core';
+import { buildNodeChildren, type DataSource, type LazyKind, type UplcNode } from '@cardananium/de-uplc-core';
 import { getSession, useStore } from '../store';
 import { useSettings } from '../platform/settings';
 import { Tree, nodeIconColor } from '../components/Tree';

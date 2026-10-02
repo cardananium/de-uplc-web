@@ -279,6 +279,12 @@ class TermSerializer {
           value: constant.bytes,
         };
 
+      case 'Value':
+        return {
+          type: constant.type,
+          value: constant.entries,
+        };
+
       default: {
         // This should never happen with proper typing
         const _exhaustiveCheck: never = constant;
@@ -293,7 +299,7 @@ class TermSerializer {
 
     // Types that should use multiline format (complex types)
     // Note: 'List' is the same as 'ProtoList', 'Pair' is the same as 'ProtoPair'
-    const multilineTypes = ['Data', 'Bls12_381G1Element', 'Bls12_381G2Element', 'Bls12_381MlResult', 'ProtoList', 'ProtoPair', 'List', 'Pair'];
+    const multilineTypes = ['Data', 'Bls12_381G1Element', 'Bls12_381G2Element', 'Bls12_381MlResult', 'Value', 'ProtoList', 'ProtoPair', 'List', 'Pair'];
 
     // If explicitly marked as multiline, use multiline format
     if (multilineTypes.includes(type)) {

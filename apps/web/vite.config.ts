@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
-// @de-uplc/* are resolved by alias (no workspace symlinks; npm can't handle the pnpm
+// @cardananium/de-uplc-* are resolved by alias (no workspace symlinks; npm can't handle the pnpm
 // "workspace:*" deps). engine-wasm aliases to the pkg DIR so both the bare specifier
 // (-> de_uplc.js) and the `?url` subpath (-> de_uplc_bg.wasm) resolve.
 export default defineConfig({
@@ -16,10 +16,10 @@ export default defineConfig({
   plugins: [react(), wasm(), topLevelAwait()],
   resolve: {
     alias: {
-      '@de-uplc/core': r('../../packages/core/src/index.ts'),
-      '@de-uplc/engine-worker': r('../../packages/engine-worker/src/index.ts'),
-      '@de-uplc/engine-wasm': r('../../packages/engine-wasm/pkg'),
-      '@de-uplc/decompiler-wasm': r('../../packages/decompiler-wasm/pkg'),
+      '@cardananium/de-uplc-core': r('../../packages/core/src/index.ts'),
+      '@cardananium/de-uplc-engine-worker': r('../../packages/engine-worker/src/index.ts'),
+      '@cardananium/de-uplc-engine-wasm': r('../../packages/engine-wasm/pkg'),
+      '@cardananium/de-uplc-decompiler-wasm': r('../../packages/decompiler-wasm/pkg'),
     },
   },
   worker: {

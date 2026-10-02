@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Network, SettingsStore, NetworkPrompt } from '@de-uplc/core';
+import type { Network, SettingsStore, NetworkPrompt } from '@cardananium/de-uplc-core';
 
 // Browser settings, persisted to localStorage. Two faces of the same keys:
 //  - `useSettings` — reactive store for the Settings UI + theme.

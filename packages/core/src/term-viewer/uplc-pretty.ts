@@ -12,7 +12,7 @@
 // Produces the same `SerializedTerm` shape as `serialize.ts` (text + line↔termId
 // locations); it emits no inlay hints — the canonical syntax is self-describing.
 
-import type { Constant, PlutusData, Term, Type } from '../debugger-types';
+import type { Constant, PlutusData, Term, Type, ValueAsset } from '../debugger-types';
 import { builtinName, termLabel } from './builtin-name';
 import type { SerializedTerm, TermLocation } from './serialize';
 
@@ -114,6 +114,7 @@ function constant(c: Constant): string {
     case 'Bls12_381G1Element': return `bls12_381_G1_element 0x${c.serialized}`;
     case 'Bls12_381G2Element': return `bls12_381_G2_element 0x${c.serialized}`;
     case 'Bls12_381MlResult': return 'bls12_381_mlresult <opaque>';
+    case 'Value': return `value ${valueItem(c.entries)}`;
     default: {
       const _exhaustive: never = c;
       throw new Error(`Unknown constant: ${JSON.stringify(_exhaustive)}`);
@@ -135,11 +136,20 @@ function constItem(c: Constant): string {
     case 'Bls12_381G1Element': return `0x${c.serialized}`;
     case 'Bls12_381G2Element': return `0x${c.serialized}`;
     case 'Bls12_381MlResult': return '<opaque>';
+    case 'Value': return valueItem(c.entries);
     default: {
       const _exhaustive: never = c;
       throw new Error(`Unknown constant: ${JSON.stringify(_exhaustive)}`);
     }
   }
+}
+
+/** Value literal (uplc crate `to_doc_value`): `[(#currency, [(#token, quantity), …]), …]`. */
+function valueItem(entries: ValueAsset[]): string {
+  const assets = entries.map(
+    (a) => `(#${a.currency}, [${a.tokens.map((t) => `(#${t.name}, ${t.quantity})`).join(', ')}])`,
+  );
+  return `[${assets.join(', ')}]`;
 }
 
 /** Type name (uplc crate `Type::to_doc`). */
@@ -156,6 +166,7 @@ function typeStr(t: Type): string {
     case 'Bls12_381G1Element': return 'bls12_381_G1_element';
     case 'Bls12_381G2Element': return 'bls12_381_G2_element';
     case 'Bls12_381MlResult': return 'bls12_381_mlresult';
+    case 'Value': return 'value';
     default: {
       const _exhaustive: never = t;
       throw new Error(`Unknown type: ${JSON.stringify(_exhaustive)}`);

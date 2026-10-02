@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { LazyKind, UplcNode } from '@de-uplc/core';
+import type { LazyKind, UplcNode } from '@cardananium/de-uplc-core';
 import { Codicon } from './Codicon';
 import { EmptyState } from './EmptyState';
 import { openNodeInTab, revealTermInEditor } from '../store';

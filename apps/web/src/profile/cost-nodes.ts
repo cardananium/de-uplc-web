@@ -12,7 +12,7 @@
 // row, `Force→Apply ⋯4`, and its `termId` is the member with the largest SELF — reveal has to land
 // on the node that actually costs something, not on the outermost `Force` of the chain.
 
-import type { NodeView, TermIndex, UplcNode } from '@de-uplc/core';
+import type { NodeView, TermIndex, UplcNode } from '@cardananium/de-uplc-core';
 import { fmtInt, fmtLn, fmtPct } from './format';
 import { bucketOf, nodeLabel, NO_BUCKET } from './heat';
 import type { ProfileIndex, ProfileRow } from './profile-index';

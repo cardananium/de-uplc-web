@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
-import type { DebuggerTypes } from '@de-uplc/core';
+import type { DebuggerTypes } from '@cardananium/de-uplc-core';
 import { useStore } from '../../store';
 import { Codicon } from '../../components/Codicon';
 import { EmptyState } from '../../components/EmptyState';

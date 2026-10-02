@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { termIndexFor } from '@de-uplc/core';
+import { termIndexFor } from '@cardananium/de-uplc-core';
 import { useStore, revealTermInEditor } from '../../store';
 import { useSettings } from '../../platform/settings';
 import { useTabsStore } from '../../editor/tabs-store';

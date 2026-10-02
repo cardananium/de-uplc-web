@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { termIndexFor } from '@de-uplc/core';
+import { termIndexFor } from '@cardananium/de-uplc-core';
 import { useStore, revealTermInEditor } from '../../store';
 import { Codicon } from '../../components/Codicon';
 import { EmptyState } from '../../components/EmptyState';

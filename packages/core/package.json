@@ -1,5 +1,5 @@
 {
-  "name": "@de-uplc/core",
+  "name": "@cardananium/de-uplc-core",
   "version": "0.0.1",
   "private": true,
   "description": "Platform-agnostic core for the de-uplc UPLC debugger (no vscode/fs/react).",
