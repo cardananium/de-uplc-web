@@ -41,6 +41,10 @@
   --ann-error: #d83a42;
   --ann-warning: #b7791f;
   --ann-info: #0969da;
+  /* Opacity of the code the annotation spotlight dims: legible, clearly secondary. It puts the
+     keyword / identifier / function colours near 2:1 on the editor background in both themes,
+     which takes a higher value on white than on the dark editor. */
+  --ann-dim: 0.4;
   /* status-badge foregrounds: light needs a darker fg than the raw accent to clear WCAG AA on the
      15-16% tint over #eceff3 (dark reuses the accents, already AA). */
   --badge-running-fg: #2f47c2;
@@ -128,6 +132,7 @@
   --ann-error: #ff6b71;
   --ann-warning: #f5c46b;
   --ann-info: #58a6ff;
+  --ann-dim: 0.35;
   --badge-running-fg: var(--accent);
   --badge-paused-fg: var(--warning);
   --badge-done-fg: var(--accent-green);

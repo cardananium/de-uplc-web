@@ -1,6 +1,6 @@
-/* Link annotations: severity-tinted line bands + gutter glyphs in the editor, an anchored hint
-   card for the focused one, and a floating navigator. `.ann-<severity>` sets `--ann-c`, which
-   every piece below is coloured from. */
+/* Link annotations: severity-tinted line bands + gutter glyphs in the editor, a spotlight that
+   dims the lines around them, an anchored hint card for the focused one, and a floating
+   navigator. `.ann-<severity>` sets `--ann-c`, which every piece below is coloured from. */
 .ann-error { --ann-c: var(--ann-error); }
 .ann-warning { --ann-c: var(--ann-warning); }
 .ann-info { --ann-c: var(--ann-info); }
@@ -24,6 +24,22 @@
 }
 
 .ann-sev-icon { color: var(--ann-c); display: inline-flex; flex: none; }
+
+/* ── spotlight ───────────────────────────────────────────────────────────────────────────── */
+/* The lines outside every target carry `.ann-dimmed` (their text, inlay hints included) and
+   `.ann-dimmed-ln` (their line number). They recede only under the editor container's
+   `data-ann-spotlight` — the "dim the rest" switch — so flipping it fades them in place. A hovered
+   line reads at full strength. Nothing else in or around the editor carries these classes: the
+   hint card, the navigator, the gutter glyphs and the line bands stay as they are. */
+.ann-dimmed,
+.ann-dimmed-ln { transition: opacity 0.15s ease-out; }
+[data-ann-spotlight] .ann-dimmed,
+[data-ann-spotlight] .ann-dimmed-ln { opacity: var(--ann-dim); }
+[data-ann-spotlight] .view-line:hover .ann-dimmed { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .ann-dimmed,
+  .ann-dimmed-ln { transition: none; }
+}
 
 /* ── hint card ───────────────────────────────────────────────────────────────────────────── */
 .ann-card-host { z-index: 20; padding-top: 2px; }

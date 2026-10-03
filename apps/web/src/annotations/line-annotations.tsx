@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import type * as MonacoT from 'monaco-editor';
 import type { MonacoNS } from '../editor/monaco';
 import { Codicon } from '../components/Codicon';
+import { useSettings } from '../platform/settings';
 import type { AnnotationSeverity } from './annotations';
+import { dimmedSpans } from './spotlight';
 import './annotations.css';
 
 /** One annotation as an editor sees it: a 1-based inclusive line range and what to show there. */
@@ -71,6 +73,30 @@ function markDecorations(
   return decos;
 }
 
+/**
+ * The spotlight's decorations: one per run of lines outside every mark and the kept line.
+ * Whole-line, so the inline class also covers inlay text at either end of a line. They carry no
+ * look of their own — the opacity applies under the container's `data-ann-spotlight`
+ * (annotations.css).
+ */
+function dimDecorations(
+  monaco: MonacoNS,
+  model: MonacoT.editor.ITextModel,
+  marks: readonly LineMark[],
+  keepBright: number | undefined,
+): MonacoT.editor.IModelDeltaDecoration[] {
+  const keep = keepBright === undefined ? [] : [{ line: keepBright, endLine: keepBright }];
+  return dimmedSpans(marks, model.getLineCount(), keep).map((s) => ({
+    range: new monaco.Range(s.start, 1, s.end, model.getLineMaxColumn(s.end)),
+    options: {
+      isWholeLine: true,
+      inlineClassName: 'ann-dimmed',
+      lineNumberClassName: 'ann-dimmed-ln',
+      stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+    },
+  }));
+}
+
 export interface LineAnnotationsArgs {
   editor: MonacoT.editor.IStandaloneCodeEditor | undefined;
   monaco: MonacoNS | undefined;
@@ -84,18 +110,27 @@ export interface LineAnnotationsArgs {
   position: string;
   /** Bumped when the model text changes, so decorations are re-laid on the new text. */
   contentKey: unknown;
+  /**
+   * A 1-based line the spotlight keeps bright besides the marks: the debugger's current line,
+   * which moves with every step. It never turns the spotlight on by itself.
+   */
+  keepBright?: number;
 }
 
 /**
  * Persistent annotation decorations (whole-line band + gutter glyph + overview-ruler mark, hover
- * with the hint) and, for the focused annotation, a hint card anchored under its range as a
- * Monaco content widget sitting in a view zone of its own height. Returns the card's portal, to be
- * rendered by the caller.
+ * with the hint), the spotlight that dims every line outside the marks and the kept line while the
+ * "dim the rest" setting is on, and, for the focused annotation, a hint card anchored under its
+ * range as a Monaco content widget sitting in a view zone of its own height. Returns the card's
+ * portal, to be rendered by the caller.
  */
 export function useLineAnnotations({
-  editor, monaco, ready, marks, focusIndex, focusNonce, position, contentKey,
+  editor, monaco, ready, marks, focusIndex, focusNonce, position, contentKey, keepBright,
 }: LineAnnotationsArgs): ReactNode {
   const decoRef = useRef<MonacoT.editor.IEditorDecorationsCollection>();
+  const dimRef = useRef<MonacoT.editor.IEditorDecorationsCollection>();
+  const [dimmed, setDimmed] = useState(false);
+  const spotlight = useSettings((s) => s.annSpotlight);
   const [cardOpen, setCardOpen] = useState(true);
   const host = useMemo(() => {
     const el = document.createElement('div');
@@ -125,7 +160,30 @@ export function useLineAnnotations({
     decoRef.current.set(markDecorations(monaco, marks, focusIndex, lineCount));
   }, [ready, editor, monaco, marks, focusIndex, contentKey]);
 
-  useEffect(() => () => decoRef.current?.clear(), []);
+  // The spotlight's lines follow the marks, the text and the kept line, and are laid down whether
+  // or not the setting is on: the setting only flips the container attribute below, so turning it
+  // on or off fades the lines already on screen instead of re-rendering them. A debugger step that
+  // moves the kept line costs one pass over the marks and a swap of these few ranges.
+  useEffect(() => {
+    if (!ready || !editor || !monaco) return;
+    const model = editor.getModel();
+    const decos = model ? dimDecorations(monaco, model, marks, keepBright) : [];
+    dimRef.current ??= editor.createDecorationsCollection();
+    dimRef.current.set(decos);
+    setDimmed(decos.length > 0);
+  }, [ready, editor, monaco, marks, contentKey, keepBright]);
+
+  useEffect(() => {
+    const el = ready ? editor?.getContainerDomNode() : undefined;
+    if (!el || !spotlight || !dimmed) return;
+    el.setAttribute('data-ann-spotlight', '');
+    return () => el.removeAttribute('data-ann-spotlight');
+  }, [ready, editor, spotlight, dimmed]);
+
+  useEffect(() => () => {
+    decoRef.current?.clear();
+    dimRef.current?.clear();
+  }, []);
 
   const focused = marks.find((m) => m.index === focusIndex);
   const showCard = !!focused && cardOpen;

@@ -41,6 +41,8 @@ export interface Settings {
   profileMinShare: number;
   /** Whole-run step cap. Reaching it stops the profile and reports it as partial (`Limit`). */
   profileMaxSteps: number;
+  /** While a launch link's annotations are shown, dim the editor lines outside their targets. */
+  annSpotlight: boolean;
 }
 
 const KEYS = {
@@ -59,6 +61,7 @@ const KEYS = {
   profileInlay: 'deuplc.profile.inlay',
   profileMinShare: 'deuplc.profile.minShare',
   profileMaxSteps: 'deuplc.profile.maxSteps',
+  annSpotlight: 'deuplc.annotations.spotlight',
 } as const;
 
 const NETWORKS: Network[] = ['mainnet', 'preview', 'preprod'];
@@ -83,6 +86,7 @@ const DEFAULTS: Settings = {
   profileInlay: true,
   profileMinShare: 0.1,
   profileMaxSteps: 50_000_000,
+  annSpotlight: true,
 };
 
 function readStr(key: string, fallback: string): string {
@@ -127,6 +131,7 @@ function load(): Settings {
     // 0 is a legal threshold ("show everything"), so readNum0, not readNum.
     profileMinShare: readNum0(KEYS.profileMinShare, DEFAULTS.profileMinShare),
     profileMaxSteps: readNum(KEYS.profileMaxSteps, DEFAULTS.profileMaxSteps),
+    annSpotlight: readBool(KEYS.annSpotlight, DEFAULTS.annSpotlight),
   };
 }
 

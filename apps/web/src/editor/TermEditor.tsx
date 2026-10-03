@@ -608,6 +608,16 @@ export function TermEditor() {
     return () => clearTimeout(t);
   }, [ready, revealRequest, termLocations]);
 
+  // Current debug term line (distinct from the caret Ln/Col) — shown in the status bar while
+  // paused/finished/error so the readout doesn't contradict the highlighted line, and kept bright
+  // by the annotation spotlight, since it is the line the user reads while stepping.
+  const dbgLine = currentTermId !== undefined ? lineForTermId(termLocations, termView, currentTermId) : undefined;
+  const dbgState = finalStatus === 'Done' ? { label: 'finished', cls: 'sb-done' }
+    : finalStatus === 'Error' ? { label: 'error', cls: 'sb-error' }
+      : status === 'pause' ? { label: 'paused', cls: 'sb-paused' }
+        : (status === 'running' && stepDelay > 0) ? { label: 'running', cls: 'sb-paused' }
+          : undefined;
+
   // Link annotations: each resolved one sits on the first line of its term in the ACTIVE view
   // (term ids are view-independent, lines are not), so a view switch moves them with the text.
   const annLines = useMemo(
@@ -639,6 +649,7 @@ export function TermEditor() {
     focusNonce: annotations?.nonce ?? 0,
     position: annotations ? `${annotations.focus + 1} / ${annotations.items.length}` : '',
     contentKey: termText,
+    keepBright: dbgState && dbgLine !== undefined ? dbgLine + 1 : undefined,
   });
   // Every focus move (and the initial focus of a launch) scrolls its term into view through the
   // same reveal the inspector trees use.
@@ -650,15 +661,6 @@ export function TermEditor() {
     if (termId !== undefined) revealTermInEditor(termId);
   }, [ready, annotations]);
   useEffect(() => { if (!annotations) annNonceRef.current = 0; }, [annotations]);
-
-  // Current debug term line (distinct from the caret Ln/Col) — shown in the status bar while
-  // paused/finished/error so the readout doesn't contradict the highlighted line.
-  const dbgLine = currentTermId !== undefined ? lineForTermId(termLocations, termView, currentTermId) : undefined;
-  const dbgState = finalStatus === 'Done' ? { label: 'finished', cls: 'sb-done' }
-    : finalStatus === 'Error' ? { label: 'error', cls: 'sb-error' }
-      : status === 'pause' ? { label: 'paused', cls: 'sb-paused' }
-        : (status === 'running' && stepDelay > 0) ? { label: 'running', cls: 'sb-paused' }
-          : undefined;
 
   // Where the caret sits in the hot list. Counted on `hotLines` (bucket ≥ 3) — the very list F8
   // walks — so the key and the readout can never disagree about the denominator. It survives
