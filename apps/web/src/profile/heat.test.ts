@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Two things nobody can check by eye: where a bucket boundary actually falls, and whether the
 // twelve hexes in `heat.ts` still match the twelve in `tokens.css` and the twenty-four (twelve × two
 // theme maps) in `monaco.ts`. Both destinations are read here as TEXT, the same trick the generated
