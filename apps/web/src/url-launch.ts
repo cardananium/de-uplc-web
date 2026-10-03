@@ -309,6 +309,11 @@ function decodeLaunchBody(o: Record<string, unknown>): UrlLaunch | null {
   });
 }
 
+/** Whether the URL carries a launch: a compressed `d` payload or plain launch params. */
+export function hasUrlLaunch(): boolean {
+  return readCompressedLaunchParam() !== null || parseUrlLaunch() !== null;
+}
+
 /** Resolve a launch from the URL, preferring the compressed `d` form when present. */
 export async function resolveUrlLaunch(): Promise<UrlLaunch | null> {
   const d = readCompressedLaunchParam();

@@ -3,7 +3,7 @@ import { Toaster, toast } from 'sonner';
 import { useStore } from './store';
 import { useDecompiler } from './decompiler/decompiler-store';
 import { getAtPath } from './decompiler/catalogue';
-import { buildShareUrl, resolveUrlLaunch } from './url-launch';
+import { buildShareUrl, hasUrlLaunch, resolveUrlLaunch } from './url-launch';
 import { applyDebuggerLaunchAnnotations, applyDecompilerLaunchAnnotations } from './annotations/apply-launch';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useSettings, resolveTheme } from './platform/settings';
@@ -71,6 +71,17 @@ export function App() {
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
   }, [theme]);
+
+  // A link opened later in this browser tab only changes the hash, which the launch below never
+  // re-reads: reload to open it exactly as a fresh visit would. The app never writes the hash itself.
+  useEffect(() => {
+    const appliedHash = window.location.hash;
+    const onHashChange = () => {
+      if (window.location.hash !== appliedHash && hasUrlLaunch()) window.location.reload();
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   // Deep-link: debugger (`script` / parts / `#d=`) or decompiler (`#decompile=` / `view=decompiler`).
   // Runs once on first load.

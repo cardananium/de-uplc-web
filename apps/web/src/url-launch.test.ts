@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { buildShareUrl, parseUrlLaunch, resolveUrlLaunch, type UrlLaunch } from './url-launch';
+import { buildShareUrl, hasUrlLaunch, parseUrlLaunch, resolveUrlLaunch, type UrlLaunch } from './url-launch';
 
 // The deep-link is an interop contract: cquisitor mints these URLs and this module is the only
 // reader. The cases below are the ones a generator can get wrong — above all `exUnits`, which is
@@ -431,5 +431,25 @@ describe('annotations on a #d= link (ann / ann_focus / options)', () => {
       annotations: { items: [{ target: { kind: 'term', term_id: 1 } }, { target: { kind: 'uplc_line', line: 3 }, severity: 'warning' }], focus: 1 },
     };
     expect(await roundTrip(prog)).toEqual(prog);
+  });
+});
+
+describe('hasUrlLaunch — whether the address bar holds a link to open', () => {
+  it('sees compressed, plain debugger and decompiler links', async () => {
+    setUrl(await buildShareUrl({ kind: 'program', script: SCRIPT, version: 'v3' }));
+    expect(hasUrlLaunch()).toBe(true);
+    setUrl(`${ORIGIN}#script=${encodeURIComponent(SCRIPT)}&v=v3`);
+    expect(hasUrlLaunch()).toBe(true);
+    setUrl(`${ORIGIN}#decompile=0101&v=v3`);
+    expect(hasUrlLaunch()).toBe(true);
+  });
+
+  it('ignores an empty hash and unrelated parameters', () => {
+    setUrl(ORIGIN);
+    expect(hasUrlLaunch()).toBe(false);
+    setUrl(`${ORIGIN}#`);
+    expect(hasUrlLaunch()).toBe(false);
+    setUrl(`${ORIGIN}#theme=dark`);
+    expect(hasUrlLaunch()).toBe(false);
   });
 });
