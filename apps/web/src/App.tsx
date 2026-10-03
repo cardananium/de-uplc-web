@@ -4,6 +4,7 @@ import { useStore } from './store';
 import { useDecompiler } from './decompiler/decompiler-store';
 import { getAtPath } from './decompiler/catalogue';
 import { buildShareUrl, resolveUrlLaunch } from './url-launch';
+import { applyDebuggerLaunchAnnotations, applyDecompilerLaunchAnnotations } from './annotations/apply-launch';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useSettings, resolveTheme } from './platform/settings';
 import { applyMonacoTheme } from './editor/theme';
@@ -86,7 +87,11 @@ export function App() {
             const dc = useDecompiler.getState();
             dc.setInput(launch.script);
             dc.applyLaunchHints({ version: launch.version, purpose: launch.purpose });
+            // The link's options go in before the first decompile: its line numbers were counted
+            // on the output of exactly those options.
+            const ignored = launch.options ? await dc.applyLaunchOptions(launch.options) : [];
             if (launch.script) await dc.decompile();
+            if (launch.annotations && !cancelled) applyDecompilerLaunchAnnotations(launch.annotations, ignored);
             return;
           }
           const s = useStore.getState();
@@ -96,6 +101,8 @@ export function App() {
             await s.loadTransaction(launch.tx, 'shared-tx.json');
             if (launch.redeemer && !cancelled) await useStore.getState().selectRedeemer(launch.redeemer);
           }
+          // Annotations belong to the program the link opened — resolved only once it is loaded.
+          if (launch.annotations && !cancelled) applyDebuggerLaunchAnnotations(launch.annotations);
         } finally {
           setLaunching(null);
         }

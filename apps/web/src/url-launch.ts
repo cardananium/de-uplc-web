@@ -1,4 +1,5 @@
 import type { ProgramParts } from './store';
+import { annotationsToWire, parseLaunchAnnotations, type LaunchAnnotations } from './annotations/annotations';
 
 // Debug deep-link: open the debugger straight from a URL. Three shapes —
 //   ?script=<hex|uplc>&v=v3                                   → a clean (bare) program
@@ -33,12 +34,22 @@ import type { ProgramParts } from './store';
 // wrong-looking pair we drop it rather than open with a made-up one. Absent → exactly the old
 // behaviour, so links minted before this param keep working.
 //
+// Annotations (only in the compressed `d` form): `ann` — targets to highlight, each with an optional
+// hint — and `ann_focus`, the one to scroll to first; a decompiler payload may add `options`, the
+// decompiler options object the producer decompiled with, so its pseudocode line numbers match.
+// See `annotations/annotations.ts` for the shapes and the validation.
+//
 // `purpose`, in contrast, is normally REDUNDANT: the ScriptPurpose sits inside `context` and the
 // engine derives it from there. It is here for the links that cannot be derived from — no context,
 // or a context that is valid PlutusData but not a ScriptContext — and it overrides the derived
 // value when both are present, because its generator knew the redeemer and we are inferring.
 
-export type UrlLaunch =
+export type UrlLaunch = LaunchBody & {
+  /** Validated `ann` / `ann_focus` of a `#d=` link; absent when the link carries none. */
+  annotations?: LaunchAnnotations;
+};
+
+type LaunchBody =
   | { kind: 'program'; script: string; version: string }
   | { kind: 'parts'; parts: ProgramParts }
   // A full transaction (the raw content the user loaded: CBOR hex or {transaction,utxos} JSON),
@@ -46,7 +57,14 @@ export type UrlLaunch =
   // is too large for plain query params.
   | { kind: 'transaction'; tx: string; redeemer?: string }
   /** Open the Decompiler tab on this compiled bytecode (hex, whitespace ignored). */
-  | { kind: 'decompile'; script: string; version?: string; purpose?: string };
+  | {
+      kind: 'decompile';
+      script: string;
+      version?: string;
+      purpose?: string;
+      /** Decompiler options object of a `#d=` link (validated against the catalogue on apply). */
+      options?: Record<string, unknown>;
+    };
 
 /** Normalized launch fields, the common shape behind both the plain-param and compressed paths. */
 interface LaunchFields {
@@ -252,30 +270,43 @@ export async function decodeCompressedLaunch(d: string): Promise<UrlLaunch | nul
   try {
     const json = await gunzip(fromBase64Url(d.trim()));
     const o = JSON.parse(json) as Record<string, unknown>;
-    const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string) : undefined);
-    // Full-transaction launch (mutually exclusive with the script forms).
-    const tx = str('tx');
-    if (tx) return { kind: 'transaction', tx, redeemer: str('redeemer') };
-    const view = str('view') ?? str('tab');
-    const decompileHex = str('decompile');
-    if (decompileHex || isDecompilerView(view ?? null)) {
-      return decompileLaunch(decompileHex || str('script'), str('v') ?? str('version'), str('purpose'));
-    }
-    const ints = (k: string) =>
-      Array.isArray(o[k]) ? (o[k] as unknown[]).map(Number).filter((n) => Number.isFinite(n)) : undefined;
-    return launchFromFields({
-      script: str('script'),
-      version: str('v') ?? str('version'),
-      context: str('context'),
-      redeemer: str('redeemer'),
-      datum: str('datum'),
-      cost_models: ints('costModels') ?? ints('cost_models'),
-      ex_units: parseExUnits(o.exUnits ?? o.ex_units),
-      purpose: str('purpose'),
-    });
+    if (o == null || typeof o !== 'object') return null;
+    const launch = decodeLaunchBody(o);
+    if (!launch) return null;
+    const annotations = parseLaunchAnnotations(o.ann, o.ann_focus);
+    return annotations ? { ...launch, annotations } : launch;
   } catch {
     return null;
   }
+}
+
+/** The launch fields of a decoded `d` payload (without annotations). */
+function decodeLaunchBody(o: Record<string, unknown>): UrlLaunch | null {
+  const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string) : undefined);
+  // Full-transaction launch (mutually exclusive with the script forms).
+  const tx = str('tx');
+  if (tx) return { kind: 'transaction', tx, redeemer: str('redeemer') };
+  const view = str('view') ?? str('tab');
+  const decompileHex = str('decompile');
+  if (decompileHex || isDecompilerView(view ?? null)) {
+    const launch = decompileLaunch(decompileHex || str('script'), str('v') ?? str('version'), str('purpose'));
+    const opts = o.options;
+    return launch.kind === 'decompile' && opts != null && typeof opts === 'object' && !Array.isArray(opts)
+      ? { ...launch, options: opts as Record<string, unknown> }
+      : launch;
+  }
+  const ints = (k: string) =>
+    Array.isArray(o[k]) ? (o[k] as unknown[]).map(Number).filter((n) => Number.isFinite(n)) : undefined;
+  return launchFromFields({
+    script: str('script'),
+    version: str('v') ?? str('version'),
+    context: str('context'),
+    redeemer: str('redeemer'),
+    datum: str('datum'),
+    cost_models: ints('costModels') ?? ints('cost_models'),
+    ex_units: parseExUnits(o.exUnits ?? o.ex_units),
+    purpose: str('purpose'),
+  });
 }
 
 /** Resolve a launch from the URL, preferring the compressed `d` form when present. */
@@ -306,13 +337,16 @@ async function gzip(text: string): Promise<Uint8Array> {
  */
 export async function buildShareUrl(launch: UrlLaunch): Promise<string> {
   const { origin, pathname } = window.location;
+  const ann = launch.annotations?.items.length ? annotationsToWire(launch.annotations) : {};
   if (launch.kind === 'decompile') {
     const script = launch.script.replace(/\s+/g, '');
     const extras: Record<string, string> = {};
     if (launch.version) extras.v = decompileQueryVersion(launch.version);
     if (launch.purpose) extras.purpose = decompileQueryPurpose(launch.purpose);
-    // Short hex stays a readable `#decompile=` link; large validators go through `#d=`.
-    if (script.length > 0 && script.length <= 2000) {
+    // Short hex stays a readable `#decompile=` link; large validators, annotations and options go
+    // through `#d=` (the plain form cannot carry them).
+    const rich = 'ann' in ann || !!launch.options;
+    if (!rich && script.length > 0 && script.length <= 2000) {
       const q = new URLSearchParams({ decompile: script, ...extras });
       return `${origin}${pathname}#${q.toString()}`;
     }
@@ -321,6 +355,8 @@ export async function buildShareUrl(launch: UrlLaunch): Promise<string> {
       script,
       ...(launch.version ? { v: decompileQueryVersion(launch.version) } : {}),
       ...(launch.purpose ? { purpose: decompileQueryPurpose(launch.purpose) } : {}),
+      ...(launch.options ? { options: launch.options } : {}),
+      ...ann,
     })));
     return `${origin}${pathname}#d=${d}`;
   }
@@ -339,6 +375,6 @@ export async function buildShareUrl(launch: UrlLaunch): Promise<string> {
             ...(launch.parts.ex_units?.length ? { exUnits: launch.parts.ex_units } : {}),
             ...(launch.parts.purpose ? { purpose: launch.parts.purpose } : {}),
           };
-  const d = toBase64Url(await gzip(JSON.stringify(o)));
+  const d = toBase64Url(await gzip(JSON.stringify({ ...o, ...ann })));
   return `${origin}${pathname}#d=${d}`;
 }

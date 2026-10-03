@@ -1,9 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type * as MonacoT from 'monaco-editor';
 import { ensureMonaco, type MonacoNS } from './monaco';
 import { currentThemeName } from './theme';
 import { setDataFindHandler } from './editor-actions';
+import { useLineAnnotations, type LineMark } from '../annotations/line-annotations';
 import './term-editor.css';
+
+/** Line annotations for a CodeView: marks to highlight and the focused one to reveal. */
+export interface CodeViewAnnotations {
+  marks: readonly LineMark[];
+  focusIndex: number | undefined;
+  /** Changes on every focus move; each change reveals the focused mark. */
+  focusNonce: number;
+  position: string;
+}
+
+const NO_MARKS: readonly LineMark[] = [];
 
 /**
  * Generic read-only Monaco view for data tabs (uplc-data-viewer / plain text).
@@ -15,11 +27,16 @@ export function CodeView({
   content,
   language,
   wordWrap = 'on',
+  annotations,
+  overlay,
 }: {
   content: string;
   language: string;
   /** Data tabs wrap long values; decompiled Aiken must stay `off` (wrap breaks `[(lam i_42`). */
   wordWrap?: 'on' | 'off';
+  annotations?: CodeViewAnnotations;
+  /** Rendered over the editor (e.g. an annotation navigator). */
+  overlay?: ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<MonacoT.editor.IStandaloneCodeEditor>();
@@ -81,9 +98,39 @@ export function CodeView({
     monaco.editor.setModelLanguage(model, language);
   }, [ready, content, language]);
 
+  const marks = annotations?.marks ?? NO_MARKS;
+  const card = useLineAnnotations({
+    editor: editorRef.current,
+    monaco: monacoRef.current,
+    ready,
+    marks,
+    focusIndex: annotations?.focusIndex,
+    focusNonce: annotations?.focusNonce ?? 0,
+    position: annotations?.position ?? '',
+    contentKey: content,
+  });
+
+  // The annotation glyphs need the glyph margin, which this view otherwise leaves off.
+  const hasMarks = marks.length > 0;
+  useEffect(() => {
+    if (ready) editorRef.current?.updateOptions({ glyphMargin: hasMarks });
+  }, [ready, hasMarks]);
+
+  // Focus move → bring the focused mark's first line to the centre and put the caret on it.
+  const focusLine = marks.find((m) => m.index === annotations?.focusIndex)?.line;
+  useEffect(() => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!ready || !editor || !model || focusLine === undefined || focusLine > model.getLineCount()) return;
+    editor.revealLineInCenter(focusLine);
+    editor.setPosition({ lineNumber: focusLine, column: model.getLineFirstNonWhitespaceColumn(focusLine) || 1 });
+  }, [ready, focusLine, annotations?.focusNonce, content]);
+
   return (
     <div className="term-editor-wrap">
       <div ref={containerRef} className="term-editor" data-testid="code-view" />
+      {card}
+      {overlay}
     </div>
   );
 }

@@ -283,3 +283,153 @@ describe('decompiler deep-link', () => {
     });
   });
 });
+
+/** gzip + base64url a raw payload into a `#d=` link, exactly as a producer would. */
+async function linkFor(payload: unknown): Promise<string> {
+  const gz = await new Response(new Blob([JSON.stringify(payload)]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+  const d = btoa(String.fromCharCode(...new Uint8Array(gz))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${ORIGIN}#d=${d}`;
+}
+
+describe('annotations on a #d= link (ann / ann_focus / options)', () => {
+  it('reads valid debugger annotations and the focus', async () => {
+    setUrl(await linkFor({
+      script: SCRIPT, v: 'V3',
+      ann: [
+        { target: { kind: 'term', term_id: 3 }, label: 'Fails here', hint: 'line one\nline two', severity: 'error' },
+        { target: { kind: 'uplc_line', line: 12 } },
+      ],
+      ann_focus: 1,
+    }));
+    expect(await resolveUrlLaunch()).toEqual({
+      kind: 'program', script: SCRIPT, version: 'V3',
+      annotations: {
+        items: [
+          { target: { kind: 'term', term_id: 3 }, label: 'Fails here', hint: 'line one\nline two', severity: 'error' },
+          { target: { kind: 'uplc_line', line: 12 } },
+        ],
+        focus: 1,
+      },
+    });
+  });
+
+  it('drops malformed / mistyped entries and unknown kinds, strips extra target fields', async () => {
+    setUrl(await linkFor({
+      script: SCRIPT,
+      ann: [
+        'nope',
+        { target: { kind: 'term', term_id: -1 } },
+        { target: { kind: 'term', term_id: 1.5 } },
+        { target: { kind: 'term', term_id: 2 ** 53 } },
+        { target: { kind: 'uplc_line', line: 0 } },
+        { target: { kind: 'cbor_span', offset: 0, length: 2 } },
+        { target: { kind: 'future_kind' } },
+        { label: 'no target' },
+        { target: { kind: 'term', term_id: 7 }, severity: 'fatal' },
+        { target: { kind: 'term', term_id: 7 }, label: 42 },
+        { target: { kind: 'term', term_id: 7 }, hint: null },
+        { target: { kind: 'pseudo_line', line: 4, end_line: 2 } },
+        { target: { kind: 'pseudo_line', line: 4, end_line: 'x' } },
+        { target: { kind: 'term', term_id: 7, extra: true }, label: '', hint: '', extra: 1 },
+        { target: { kind: 'pseudo_line', line: 4, end_line: 4 }, severity: 'warning' },
+      ],
+    }));
+    const l = await resolveUrlLaunch();
+    expect(l?.kind).toBe('program');
+    expect(l?.annotations).toEqual({
+      items: [
+        { target: { kind: 'term', term_id: 7 } },
+        { target: { kind: 'pseudo_line', line: 4, end_line: 4 }, severity: 'warning' },
+      ],
+      focus: 0,
+    });
+  });
+
+  it('remaps ann_focus onto the kept entries', async () => {
+    const ok = (id: number) => ({ target: { kind: 'term', term_id: id } });
+    const focusOf = async (ann: unknown[], ann_focus: unknown) => {
+      setUrl(await linkFor({ script: SCRIPT, ann, ann_focus }));
+      return (await resolveUrlLaunch())?.annotations?.focus;
+    };
+    // The focused entry kept: its position among the kept ones.
+    expect(await focusOf(['bad', ok(1), ok(2)], 2)).toBe(1);
+    // The focused entry dropped: the next kept one…
+    expect(await focusOf([ok(0), 'bad', ok(2)], 1)).toBe(1);
+    // …or the last kept one when nothing follows.
+    expect(await focusOf([ok(0), ok(1), 'bad'], 2)).toBe(1);
+    // Past the end clamps to the last entry; a non-index focus is 0.
+    expect(await focusOf([ok(0), ok(1)], 99)).toBe(1);
+    expect(await focusOf([ok(0), ok(1)], -1)).toBe(0);
+    expect(await focusOf([ok(0), ok(1)], 1.5)).toBe(0);
+    expect(await focusOf([ok(0), ok(1)], '1')).toBe(0);
+  });
+
+  it('truncates without splitting a surrogate pair', async () => {
+    setUrl(await linkFor({ script: SCRIPT, ann: [{ target: { kind: 'term', term_id: 0 }, label: 'a'.repeat(79) + '😀' }] }));
+    expect((await resolveUrlLaunch())?.annotations?.items[0].label).toBe('a'.repeat(79));
+  });
+
+  it('caps at 64 entries, 80-char labels and 2000-char hints', async () => {
+    const ann = Array.from({ length: 70 }, (_, i) => ({
+      target: { kind: 'term', term_id: i }, label: 'L'.repeat(100), hint: 'H'.repeat(2500),
+    }));
+    setUrl(await linkFor({ script: SCRIPT, ann }));
+    const items = (await resolveUrlLaunch())?.annotations?.items ?? [];
+    expect(items).toHaveLength(64);
+    expect(items[63].target).toEqual({ kind: 'term', term_id: 63 });
+    expect(items[0].label).toHaveLength(80);
+    expect(items[0].hint).toHaveLength(2000);
+  });
+
+  it('opens unchanged when ann is not an array or holds nothing valid', async () => {
+    setUrl(await linkFor({ script: SCRIPT, ann: { target: { kind: 'term', term_id: 1 } } }));
+    expect(await resolveUrlLaunch()).toEqual({ kind: 'program', script: SCRIPT, version: 'V3' });
+    setUrl(await linkFor({ script: SCRIPT, ann: [null, 1, []] }));
+    expect(await resolveUrlLaunch()).toEqual({ kind: 'program', script: SCRIPT, version: 'V3' });
+  });
+
+  it('carries annotations on a transaction launch', async () => {
+    setUrl(await linkFor({ tx: '84a4', redeemer: 'spend:0', ann: [{ target: { kind: 'term', term_id: 2 }, severity: 'warning' }] }));
+    expect(await resolveUrlLaunch()).toEqual({
+      kind: 'transaction', tx: '84a4', redeemer: 'spend:0',
+      annotations: { items: [{ target: { kind: 'term', term_id: 2 }, severity: 'warning' }], focus: 0 },
+    });
+  });
+
+  it('reads a decompiler payload with options and pseudo_line annotations', async () => {
+    setUrl(await linkFor({
+      view: 'decompiler', script: '4601', v: 'v3',
+      options: { output_layer: 'Decompiled', simplify_passes: { inline_fp: false } },
+      ann: [{ target: { kind: 'pseudo_line', line: 3, end_line: 5 }, label: 'Spend branch' }],
+    }));
+    expect(await resolveUrlLaunch()).toEqual({
+      kind: 'decompile', script: '4601', version: 'PlutusV3',
+      options: { output_layer: 'Decompiled', simplify_passes: { inline_fp: false } },
+      annotations: { items: [{ target: { kind: 'pseudo_line', line: 3, end_line: 5 }, label: 'Spend branch' }], focus: 0 },
+    });
+  });
+
+  it('ignores a non-object options field', async () => {
+    setUrl(await linkFor({ view: 'decompiler', script: '4601', options: [1, 2] }));
+    expect(await resolveUrlLaunch()).toEqual({ kind: 'decompile', script: '4601' });
+  });
+
+  it('round-trips annotations through buildShareUrl, forcing #d= for a short decompile link', async () => {
+    const annotations = {
+      items: [{ target: { kind: 'pseudo_line' as const, line: 2 }, severity: 'error' as const, label: 'x' }],
+      focus: 0,
+    };
+    const launch: UrlLaunch = { kind: 'decompile', script: '4601', options: { safe_mode: true }, annotations };
+    setUrl(ORIGIN);
+    const url = await buildShareUrl(launch);
+    expect(url.startsWith(`${ORIGIN}#d=`)).toBe(true);
+    setUrl(url);
+    expect(await resolveUrlLaunch()).toEqual(launch);
+
+    const prog: UrlLaunch = {
+      kind: 'program', script: SCRIPT, version: 'V3',
+      annotations: { items: [{ target: { kind: 'term', term_id: 1 } }, { target: { kind: 'uplc_line', line: 3 }, severity: 'warning' }], focus: 1 },
+    };
+    expect(await roundTrip(prog)).toEqual(prog);
+  });
+});

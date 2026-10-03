@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as MonacoT from 'monaco-editor';
 import { termAtLineForBreakpoint, termIndexFor, type TermHintInfo, type TermLocation, type TermView } from '@cardananium/de-uplc-core';
 import { ensureMonaco, type MonacoNS } from './monaco';
@@ -20,6 +20,10 @@ import { Codicon } from '../components/Codicon';
 import { EmptyState } from '../components/EmptyState';
 import { useStore, revealTermInEditor, type Breakpoint } from '../store';
 import { useSettings } from '../platform/settings';
+import { useAnnotations } from '../annotations/annotation-store';
+import { annotationTitle, severityOf } from '../annotations/annotations';
+import { useLineAnnotations, type LineMark } from '../annotations/line-annotations';
+import { AnnotationNavigator, type NavEntry } from '../annotations/AnnotationNavigator';
 import './term-editor.css';
 
 // ── Inlay hints provider (registered once, reads live store state) ──────────────
@@ -362,6 +366,7 @@ export function TermEditor() {
   const profileStatus = useStore((s) => s.profileStatus);
   const profileOutcome = useStore((s) => s.profileOutcome);
   const profileInlay = useSettings((s) => s.profileInlay);
+  const annotations = useAnnotations((s) => s.debugger);
 
   // Create the editor once (lazy-loads Monaco).
   useEffect(() => {
@@ -603,6 +608,49 @@ export function TermEditor() {
     return () => clearTimeout(t);
   }, [ready, revealRequest, termLocations]);
 
+  // Link annotations: each resolved one sits on the first line of its term in the ACTIVE view
+  // (term ids are view-independent, lines are not), so a view switch moves them with the text.
+  const annLines = useMemo(
+    () => annotations?.items.map((a) => (a.termId !== undefined ? lineForTermId(termLocations, termView, a.termId) : undefined)),
+    [annotations?.items, termLocations, termView],
+  );
+  const annMarks = useMemo<LineMark[]>(() => {
+    if (!annotations || !annLines) return [];
+    return annotations.items.flatMap((a, i) => {
+      const ln = annLines[i];
+      return ln === undefined ? [] : [{
+        index: i, line: ln + 1, endLine: ln + 1, severity: severityOf(a.ann), title: annotationTitle(a.ann), hint: a.ann.hint,
+      }];
+    });
+  }, [annotations, annLines]);
+  const annEntries = useMemo<NavEntry[]>(() => (annotations?.items ?? []).map((a, i) => {
+    const ln = annLines?.[i];
+    const base = { title: annotationTitle(a.ann), hint: a.ann.hint, severity: severityOf(a.ann) };
+    if (a.termId === undefined) return { ...base, status: 'missing', where: a.missing ?? 'no target' };
+    if (ln === undefined) return { ...base, status: 'missing', where: `term ${a.termId} is not in the current rendering` };
+    return { ...base, status: 'found', where: `Ln ${ln + 1} · term ${a.termId}` };
+  }), [annotations, annLines]);
+  const annCard = useLineAnnotations({
+    editor: editorRef.current,
+    monaco: monacoRef.current,
+    ready,
+    marks: annMarks,
+    focusIndex: annotations?.focus,
+    focusNonce: annotations?.nonce ?? 0,
+    position: annotations ? `${annotations.focus + 1} / ${annotations.items.length}` : '',
+    contentKey: termText,
+  });
+  // Every focus move (and the initial focus of a launch) scrolls its term into view through the
+  // same reveal the inspector trees use.
+  const annNonceRef = useRef(0);
+  useEffect(() => {
+    if (!ready || !annotations || annotations.nonce === annNonceRef.current) return;
+    annNonceRef.current = annotations.nonce;
+    const termId = annotations.items[annotations.focus]?.termId;
+    if (termId !== undefined) revealTermInEditor(termId);
+  }, [ready, annotations]);
+  useEffect(() => { if (!annotations) annNonceRef.current = 0; }, [annotations]);
+
   // Current debug term line (distinct from the caret Ln/Col) — shown in the status bar while
   // paused/finished/error so the readout doesn't contradict the highlighted line.
   const dbgLine = currentTermId !== undefined ? lineForTermId(termLocations, termView, currentTermId) : undefined;
@@ -627,6 +675,15 @@ export function TermEditor() {
     <div className="term-pane">
       <div className="term-editor-wrap">
         <div ref={containerRef} className="term-editor" data-testid="term-editor" />
+        {annCard}
+        {annotations && (
+          <AnnotationNavigator
+            entries={annEntries}
+            focus={annotations.focus}
+            onFocus={(i) => useAnnotations.getState().focusDebugger(i)}
+            onDismiss={() => useAnnotations.getState().clearDebugger()}
+          />
+        )}
         {/* An OVERLAY, not a replacement: every load sets `termText: undefined` before the new term
             arrives, and swapping the editor out for a placeholder would dispose the editor, the
             model and all five decoration collections and pay a full `editor.create` plus a TextMate

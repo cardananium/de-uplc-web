@@ -37,6 +37,10 @@
   --accent: #4f6bed;
   --accent-green: #1f9d57;
   --warning: #b7791f;
+  /* Link-annotation severities (error / warning / info). */
+  --ann-error: #d83a42;
+  --ann-warning: #b7791f;
+  --ann-info: #0969da;
   /* status-badge foregrounds: light needs a darker fg than the raw accent to clear WCAG AA on the
      15-16% tint over #eceff3 (dark reuses the accents, already AA). */
   --badge-running-fg: #2f47c2;
@@ -121,6 +125,9 @@
   --accent: #7c9cff;
   --accent-green: #55d187;
   --warning: #f5c46b;
+  --ann-error: #ff6b71;
+  --ann-warning: #f5c46b;
+  --ann-info: #58a6ff;
   --badge-running-fg: var(--accent);
   --badge-paused-fg: var(--warning);
   --badge-done-fg: var(--accent-green);

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import * as Comlink from 'comlink';
 import type { DecompilerApi } from './decompiler.worker';
 import { assertCatalogue, setAtPath, type OptionCatalogue, type OptionsObject } from './catalogue';
+import { mergeLaunchOptions } from './launch-options';
 
 export interface DecompileLaunchHints {
   version?: string;
@@ -17,6 +18,11 @@ function applyHints(opts: OptionsObject, hints: DecompileLaunchHints): OptionsOb
 
 let launchHints: DecompileLaunchHints = {};
 
+export interface DecompileRun {
+  input: string;
+  optionsJson: string;
+}
+
 interface DecompilerState {
   input: string;
   fileName?: string;
@@ -27,11 +33,18 @@ interface DecompilerState {
   error?: string;
   loading: boolean;
   elapsedMs?: number;
+  /** Bytecode + options JSON of the last finished decompile — what `output` was produced from. */
+  lastRun?: DecompileRun;
   setInput: (input: string, fileName?: string) => void;
   setOptions: (options: OptionsObject) => void;
   resetOptions: () => void;
   loadCatalogue: () => Promise<void>;
   applyLaunchHints: (hints: DecompileLaunchHints) => void;
+  /**
+   * Lay a launch link's options object over the current options (catalogue defaults + hints).
+   * Resolves to the dotted paths that were left out (unknown to this build or mistyped).
+   */
+  applyLaunchOptions: (options: Record<string, unknown>) => Promise<string[]>;
   decompile: () => Promise<void>;
 }
 
@@ -98,6 +111,23 @@ export const useDecompiler = create<DecompilerState>((set, get) => ({
     if (opts) set({ options: applyHints(opts, hints) });
   },
 
+  async applyLaunchOptions(linkOptions) {
+    await get().loadCatalogue();
+    const { catalogue, options } = get();
+    if (!catalogue) {
+      // No catalogue to check the keys against: hand the object to the decompiler as is.
+      set({ options: { ...applyHints({}, launchHints), ...linkOptions } });
+      return [];
+    }
+    const { options: merged, ignored } = mergeLaunchOptions(
+      catalogue,
+      options ?? applyHints(structuredClone(catalogue.defaults), launchHints),
+      linkOptions,
+    );
+    set({ options: merged });
+    return ignored;
+  },
+
   async decompile() {
     const input = get().input.replace(/\s+/g, '');
     if (!input) { set({ error: 'Paste compiled UPLC bytecode (hex) first.', output: '' }); return; }
@@ -107,8 +137,13 @@ export const useDecompiler = create<DecompilerState>((set, get) => ({
       // Empty JSON → wasm web defaults. Pending link hints still ride along so a
       // `#decompile=…&v=v2` open does not wait on the catalogue.
       const opts = get().options ?? applyHints({}, launchHints);
-      const code = await ensureWorker().decompile(input, JSON.stringify(opts));
-      set({ output: code, error: undefined, elapsedMs: Math.round(performance.now() - t0) });
+      const optionsJson = JSON.stringify(opts);
+      try {
+        const code = await ensureWorker().decompile(input, optionsJson);
+        set({ output: code, error: undefined, elapsedMs: Math.round(performance.now() - t0) });
+      } finally {
+        set({ lastRun: { input, optionsJson } });
+      }
     } catch (e) {
       set({ output: '', error: e instanceof Error ? e.message : String(e), elapsedMs: undefined });
     } finally {

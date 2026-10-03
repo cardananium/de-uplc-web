@@ -1,0 +1,206 @@
+/* Link annotations: severity-tinted line bands + gutter glyphs in the editor, an anchored hint
+   card for the focused one, and a floating navigator. `.ann-<severity>` sets `--ann-c`, which
+   every piece below is coloured from. */
+.ann-error { --ann-c: var(--ann-error); }
+.ann-warning { --ann-c: var(--ann-warning); }
+.ann-info { --ann-c: var(--ann-info); }
+
+/* Whole-line band. A right-hand rail, not a left one: the left rail belongs to the debugger's
+   paused / finished / error band, which can sit on the same line. */
+.ann-line {
+  background: color-mix(in srgb, var(--ann-c) 11%, transparent);
+  box-shadow: inset -3px 0 0 0 var(--ann-c);
+}
+.ann-line.ann-line-focus {
+  background: color-mix(in srgb, var(--ann-c) 22%, transparent);
+}
+
+.ann-glyph {
+  background: var(--ann-c);
+  -webkit-mask: center / 12px no-repeat;
+  mask: center / 12px no-repeat;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 2.5h7.5l2.5 5.5-2.5 5.5H3z' fill='black'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 2.5h7.5l2.5 5.5-2.5 5.5H3z' fill='black'/%3E%3C/svg%3E");
+}
+
+.ann-sev-icon { color: var(--ann-c); display: inline-flex; flex: none; }
+
+/* ── hint card ───────────────────────────────────────────────────────────────────────────── */
+.ann-card-host { z-index: 20; padding-top: 2px; }
+.ann-card {
+  width: max-content;
+  max-width: min(460px, 70vw);
+  background: var(--surface-2);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--ann-c);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: normal;
+  cursor: default;
+}
+.ann-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 9px;
+}
+.ann-card-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ann-card-pos { margin-left: auto; color: var(--fg-dim); font-variant-numeric: tabular-nums; padding-left: 8px; }
+.ann-card-note {
+  padding: 0 10px 4px;
+  color: var(--ann-c);
+  font-weight: 500;
+}
+.ann-card-hint {
+  padding: 0 10px 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: auto;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.ann-icon-btn {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 0;
+}
+.ann-icon-btn:hover:not(:disabled) { background: var(--bg-subtle); color: var(--fg); }
+.ann-icon-btn:disabled { color: var(--disabled-fg); cursor: default; }
+.ann-icon-btn.is-active { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.ann-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ann-warning);
+}
+
+/* ── navigator ───────────────────────────────────────────────────────────────────────────── */
+.ann-nav {
+  position: absolute;
+  top: 8px;
+  right: 22px; /* clear of the vertical scrollbar + overview ruler */
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: calc(100% - 60px);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+.ann-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px 4px 3px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--fg);
+}
+.ann-nav-title {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.ann-nav-pos {
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+.ann-badge {
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--ann-warning);
+  background: color-mix(in srgb, var(--ann-warning) 14%, transparent);
+}
+.ann-nav > .ann-card { margin-top: 0; }
+
+.ann-list {
+  width: min(420px, 100%);
+  max-height: 320px;
+  overflow: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+}
+.ann-list ol { list-style: none; margin: 0; padding: 0; }
+.ann-list-note {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 5px 7px;
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+.ann-list-item {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 5px 7px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.ann-list-item:hover { background: var(--bg-subtle); }
+.ann-list-item.is-focus { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.ann-list-item .ann-sev-icon { margin-top: 1px; }
+.ann-list-text { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.ann-list-title { font-weight: 500; overflow-wrap: anywhere; }
+.ann-list-where { color: var(--fg-dim); font-size: 11px; }
+.ann-list-where.is-missing { color: var(--ann-warning); }
+.ann-list-hint {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ann-list-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 6px 4px 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+/* Navigator outside an editor (the decompiler failed or has no output yet): in normal flow. */
+.ann-nav-static { display: flex; justify-content: flex-end; padding: 8px 12px 0; }
+.ann-nav-static > .ann-nav { position: static; max-width: 100%; }

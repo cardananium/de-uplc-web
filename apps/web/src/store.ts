@@ -22,6 +22,7 @@ import { useSettings, type TermView, type ProfileMetric, type ProfileScope } fro
 import { BUSY_HEAVY_SOURCE_CHARS } from './components/busy-timing';
 import { buildProfileIndex, type ProfileIndex } from './profile/profile-index';
 import { useTabsStore, TERM_TAB } from './editor/tabs-store';
+import { clearDebuggerAnnotations } from './annotations/annotation-store';
 import { buildShareUrl, type UrlLaunch } from './url-launch';
 import {
   CHOOSE_REDEEMER, NO_REDEEMERS_AVAILABLE, isConcreteRedeemer, toggleMainAction, type SessionState,
@@ -182,6 +183,8 @@ interface AppState {
   toggleInlayHints: () => void;
   /** Switch the term rendering style; re-serializes the cached script term in place. */
   setTermView: (view: TermView) => void;
+  /** Locations of the loaded term in the canonical UPLC rendering, whatever the active view. */
+  canonicalUplcLocations: () => TermLocation[];
   /** Dismiss the persistent error banner (the failure reason). Cleared automatically on next run. */
   clearError: () => void;
 }
@@ -590,6 +593,7 @@ export const useStore = create<AppState>((set, get) => {
     profileHeat: useSettings.getState().profileHeat,
 
     async loadTransaction(content, fileName) {
+      clearDebuggerAnnotations();
       useTabsStore.getState().reset();
       currentTerm = undefined;
       profileCancel = true; // a new script: the profile in flight (if any) is about to be dropped
@@ -639,6 +643,7 @@ export const useStore = create<AppState>((set, get) => {
     },
 
     async loadProgram(programSrc, language) {
+      clearDebuggerAnnotations();
       useTabsStore.getState().reset();
       currentTerm = undefined;
       profileCancel = true;
@@ -690,6 +695,7 @@ export const useStore = create<AppState>((set, get) => {
     },
 
     async loadProgramParts(parts) {
+      clearDebuggerAnnotations();
       useTabsStore.getState().reset();
       currentTerm = undefined;
       profileCancel = true;
@@ -743,6 +749,7 @@ export const useStore = create<AppState>((set, get) => {
     },
 
     async selectRedeemer(redeemer) {
+      clearDebuggerAnnotations();
       useTabsStore.getState().reset();
       profileCancel = true; // either branch replaces the script the profile was taken on
       if (!isConcreteRedeemer(redeemer)) {
@@ -958,6 +965,11 @@ export const useStore = create<AppState>((set, get) => {
       const next = !get().inlayHintsEnabled;
       set({ inlayHintsEnabled: next });
       useSettings.getState().set('inlayHints', next); // persist to localStorage
+    },
+
+    canonicalUplcLocations() {
+      if (get().termView === 'uplc') return get().termLocations;
+      return currentTerm ? serializeTermUplc(currentTerm).locations : [];
     },
 
     setTermView(view) {
