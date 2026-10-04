@@ -9,7 +9,7 @@ license = "Apache-2.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-dehosk = { git = "https://github.com/cardananium/dehosk", rev = "0b4ce1de7f7b15af010a399fd822ca187383d7b0" }
+dehosk = { git = "https://github.com/cardananium/dehosk", rev = "eb42c2e9d7fa2b93ab858ff8b1354b4e856a148b" }
 
 wasm-bindgen = "0.2"
 serde = { version = "1", features = ["derive"] }
