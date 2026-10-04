@@ -13,6 +13,8 @@ export interface CodeViewAnnotations {
   /** Changes on every focus move; each change reveals the focused mark. */
   focusNonce: number;
   position: string;
+  /** The hint card's ✕: closes the annotations. */
+  onClose?: () => void;
 }
 
 const NO_MARKS: readonly LineMark[] = [];
@@ -108,6 +110,7 @@ export function CodeView({
     focusNonce: annotations?.focusNonce ?? 0,
     position: annotations?.position ?? '',
     contentKey: content,
+    onClose: annotations?.onClose,
   });
 
   // The annotation glyphs need the glyph margin, which this view otherwise leaves off.

@@ -17,14 +17,16 @@ export interface NavEntry {
 /**
  * Compact annotation navigator floating over an editor: the focused entry, `2 / 5`, previous /
  * next, the full list (with the entries that did not resolve, marked and with their hints), the
- * "dim the rest" switch (a remembered setting, shared by every editor) and dismiss-all. A focused
- * entry that is not in the editor shows its hint card here instead.
+ * spotlight switch (a remembered setting, shared by every editor). A focused entry that is not in
+ * the editor shows its hint card here instead; that card's ✕, like the editor card's, closes the
+ * annotations.
  */
-export function AnnotationNavigator({ entries, focus, onFocus, onDismiss, notes, actions }: {
+export function AnnotationNavigator({ entries, focus, onFocus, onClose, notes, actions }: {
   entries: readonly NavEntry[];
   focus: number;
   onFocus: (index: number) => void;
-  onDismiss: () => void;
+  /** Closes the annotations altogether. */
+  onClose: () => void;
   /** Set-wide remarks (ignored link options, stale lines), shown in the list. */
   notes?: readonly string[];
   /** Extra buttons for the list footer. */
@@ -37,7 +39,7 @@ export function AnnotationNavigator({ entries, focus, onFocus, onDismiss, notes,
   const notFound = entries.filter((e) => e.status !== 'found').length;
   const many = entries.length > 1;
   // Only a target drawn in the editor gives the spotlight something to light.
-  const canDim = notFound < entries.length;
+  const canSpot = notFound < entries.length;
   return (
     <div className="ann-nav" role="toolbar" aria-label="Link annotations">
       <div className="ann-nav-bar">
@@ -59,16 +61,13 @@ export function AnnotationNavigator({ entries, focus, onFocus, onDismiss, notes,
           <Codicon name="list-unordered" />
           {(notFound > 0 || (notes?.length ?? 0) > 0) && <span className="ann-dot" />}
         </button>
-        <button type="button" className={`ann-icon-btn${spotlight && canDim ? ' is-active' : ''}`} aria-pressed={spotlight}
-          disabled={!canDim}
-          title={canDim
-            ? 'Dim the rest — fade the code outside the annotated lines (hover a line to read it)'
-            : 'Dim the rest — no annotation is shown in the editor'}
-          aria-label="Dim the rest" onClick={() => useSettings.getState().set('annSpotlight', !spotlight)}>
+        <button type="button" className={`ann-icon-btn${spotlight && canSpot ? ' is-active' : ''}`} aria-pressed={spotlight}
+          disabled={!canSpot}
+          title={canSpot
+            ? 'Spotlight — darken everything but the focused annotation'
+            : 'Spotlight — no annotation is shown in the editor'}
+          aria-label="Spotlight" onClick={() => useSettings.getState().set('annSpotlight', !spotlight)}>
           <Codicon name="color-mode" />
-        </button>
-        <button type="button" className="ann-icon-btn" title="Dismiss all annotations" aria-label="Dismiss all annotations" onClick={onDismiss}>
-          <Codicon name="close-all" />
         </button>
       </div>
       {cur.status !== 'found' && !listOpen && (
@@ -77,6 +76,7 @@ export function AnnotationNavigator({ entries, focus, onFocus, onDismiss, notes,
           title={cur.title}
           hint={cur.hint}
           note={`${cur.status === 'stale' ? 'Stale' : 'Not found'} — ${cur.where}`}
+          onClose={onClose}
         />
       )}
       {listOpen && (

@@ -1,6 +1,6 @@
-/* Link annotations: severity-tinted line bands + gutter glyphs in the editor, a spotlight that
-   dims the lines around them, an anchored hint card for the focused one, and a floating
-   navigator. `.ann-<severity>` sets `--ann-c`, which every piece below is coloured from. */
+/* Link annotations: severity-tinted line bands + gutter glyphs in the editor, an anchored hint
+   card for the focused one, a floating navigator and a spotlight scrim that darkens the page
+   around the focused one. `.ann-<severity>` sets `--ann-c`, which every piece below is coloured from. */
 .ann-error { --ann-c: var(--ann-error); }
 .ann-warning { --ann-c: var(--ann-warning); }
 .ann-info { --ann-c: var(--ann-info); }
@@ -26,19 +26,25 @@
 .ann-sev-icon { color: var(--ann-c); display: inline-flex; flex: none; }
 
 /* ── spotlight ───────────────────────────────────────────────────────────────────────────── */
-/* The lines outside every target carry `.ann-dimmed` (their text, inlay hints included) and
-   `.ann-dimmed-ln` (their line number). They recede only under the editor container's
-   `data-ann-spotlight` — the "dim the rest" switch — so flipping it fades them in place. A hovered
-   line reads at full strength. Nothing else in or around the editor carries these classes: the
-   hint card, the navigator, the gutter glyphs and the line bands stay as they are. */
-.ann-dimmed,
-.ann-dimmed-ln { transition: opacity 0.15s ease-out; }
-[data-ann-spotlight] .ann-dimmed,
-[data-ann-spotlight] .ann-dimmed-ln { opacity: var(--ann-dim); }
-[data-ann-spotlight] .view-line:hover .ann-dimmed { opacity: 1; }
+/* One full-page layer (a portal on <body>) above the whole app and below modals and popovers.
+   Its mask cuts the holes: the focused target's lines, the hint card and the navigator. It never
+   takes a click. Shown, it fades in on every appearance; hidden, it fades out (both 150 ms). */
+.ann-scrim {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+.ann-scrim.is-shown { opacity: 1; animation: ann-scrim-in 0.15s ease-out; }
+.ann-scrim-fill { fill: var(--ann-scrim); }
+@keyframes ann-scrim-in { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .ann-dimmed,
-  .ann-dimmed-ln { transition: none; }
+  .ann-scrim { transition: none; }
+  .ann-scrim.is-shown { animation: none; }
 }
 
 /* ── hint card ───────────────────────────────────────────────────────────────────────────── */
@@ -64,6 +70,10 @@
   gap: 6px;
   padding: 6px 6px 6px 9px;
 }
+/* A draggable head: the card moves by a transform on its host, set while dragging. */
+.ann-card-head.is-draggable { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.ann-card-host.is-dragging .ann-card-head { cursor: grabbing; }
+.ann-card-head.is-draggable .ann-icon-btn { cursor: pointer; }
 .ann-card-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ann-card-pos { margin-left: auto; color: var(--fg-dim); font-variant-numeric: tabular-nums; padding-left: 8px; }
 .ann-card-note {

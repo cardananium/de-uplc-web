@@ -41,7 +41,7 @@ export interface Settings {
   profileMinShare: number;
   /** Whole-run step cap. Reaching it stops the profile and reports it as partial (`Limit`). */
   profileMaxSteps: number;
-  /** While a launch link's annotations are shown, dim the editor lines outside their targets. */
+  /** While a launch link's annotations are shown, darken the page around the focused one. */
   annSpotlight: boolean;
 }
 

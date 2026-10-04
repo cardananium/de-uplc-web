@@ -61,12 +61,13 @@ export function DecompilerView() {
     void decompile();
   };
 
+  const closeAnnotations = () => useAnnotations.getState().clearDecompiler();
   const navigator = annSet && ann ? (
     <AnnotationNavigator
       entries={ann.entries}
       focus={annSet.focus}
       onFocus={(i) => useAnnotations.getState().focusDecompiler(i)}
-      onDismiss={() => useAnnotations.getState().clearDecompiler()}
+      onClose={closeAnnotations}
       notes={ann.notes}
       actions={stale ? (
         <button type="button" className="text-button" disabled={loading} onClick={restoreLinkRun}>
@@ -134,6 +135,7 @@ export function DecompilerView() {
                     focusIndex: annSet.focus,
                     focusNonce: annSet.nonce,
                     position: `${annSet.focus + 1} / ${annSet.items.length}`,
+                    onClose: closeAnnotations,
                   } : undefined}
                   overlay={navigator}
                 />

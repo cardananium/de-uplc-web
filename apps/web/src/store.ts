@@ -22,7 +22,7 @@ import { useSettings, type TermView, type ProfileMetric, type ProfileScope } fro
 import { BUSY_HEAVY_SOURCE_CHARS } from './components/busy-timing';
 import { buildProfileIndex, type ProfileIndex } from './profile/profile-index';
 import { useTabsStore, TERM_TAB } from './editor/tabs-store';
-import { clearDebuggerAnnotations } from './annotations/annotation-store';
+import { clearDebuggerAnnotations, quietDebuggerSpotlight } from './annotations/annotation-store';
 import { buildShareUrl, type UrlLaunch } from './url-launch';
 import {
   CHOOSE_REDEEMER, NO_REDEEMERS_AVAILABLE, isConcreteRedeemer, toggleMainAction, type SessionState,
@@ -806,6 +806,7 @@ export const useStore = create<AppState>((set, get) => {
       // run loop and return immediately, so the lock spans the transition, not the whole run.
       if (get().locked) return;
       set({ locked: true });
+      quietDebuggerSpotlight();
       try {
         const action = toggleMainAction(get().status);
         if (action === 'start') {
@@ -838,6 +839,7 @@ export const useStore = create<AppState>((set, get) => {
     async step() {
       if (!session || get().status !== 'pause' || get().locked) return;
       set({ locked: true });
+      quietDebuggerSpotlight();
       try {
         runGen = sessionGeneration; // this step belongs to the current session
         // A step can complete the program: `finished` true means onFinished/onError already set the
@@ -858,6 +860,7 @@ export const useStore = create<AppState>((set, get) => {
     async refresh() {
       if (get().locked) return;
       set({ locked: true });
+      quietDebuggerSpotlight();
       try {
         await runFromStart();
       } catch (e) {
@@ -871,6 +874,7 @@ export const useStore = create<AppState>((set, get) => {
     async stop() {
       if (!session || get().locked) return;
       set({ locked: true });
+      quietDebuggerSpotlight();
       try {
         // Bump before the drain so the stopped run's final callback fails isStaleRun() and is dropped
         // (it would otherwise transiently stamp a terminal result before the set() below).

@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type * as MonacoT from 'monaco-editor';
 import type { MonacoNS } from '../editor/monaco';
 import { Codicon } from '../components/Codicon';
 import { useSettings } from '../platform/settings';
 import type { AnnotationSeverity } from './annotations';
-import { dimmedSpans } from './spotlight';
+import { useSpotlight } from './spotlight-scrim';
+import { CardDrag, offsetTransform, startsDrag } from './card-drag';
 import './annotations.css';
 
 /** One annotation as an editor sees it: a 1-based inclusive line range and what to show there. */
@@ -73,30 +74,6 @@ function markDecorations(
   return decos;
 }
 
-/**
- * The spotlight's decorations: one per run of lines outside every mark and the kept line.
- * Whole-line, so the inline class also covers inlay text at either end of a line. They carry no
- * look of their own — the opacity applies under the container's `data-ann-spotlight`
- * (annotations.css).
- */
-function dimDecorations(
-  monaco: MonacoNS,
-  model: MonacoT.editor.ITextModel,
-  marks: readonly LineMark[],
-  keepBright: number | undefined,
-): MonacoT.editor.IModelDeltaDecoration[] {
-  const keep = keepBright === undefined ? [] : [{ line: keepBright, endLine: keepBright }];
-  return dimmedSpans(marks, model.getLineCount(), keep).map((s) => ({
-    range: new monaco.Range(s.start, 1, s.end, model.getLineMaxColumn(s.end)),
-    options: {
-      isWholeLine: true,
-      inlineClassName: 'ann-dimmed',
-      lineNumberClassName: 'ann-dimmed-ln',
-      stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
-    },
-  }));
-}
-
 export interface LineAnnotationsArgs {
   editor: MonacoT.editor.IStandaloneCodeEditor | undefined;
   monaco: MonacoNS | undefined;
@@ -104,34 +81,34 @@ export interface LineAnnotationsArgs {
   marks: readonly LineMark[];
   /** Annotation index of the focused entry, if it resolved to a mark. */
   focusIndex: number | undefined;
-  /** Changes on every focus move — re-opens a closed hint card. */
+  /** Changes on every focus move — puts a dragged hint card back under its target. */
   focusNonce: number;
   /** `2 / 5`-style position shown in the card header. */
   position: string;
   /** Bumped when the model text changes, so decorations are re-laid on the new text. */
   contentKey: unknown;
+  /** The card's ✕: closes the annotations altogether (bands, glyphs, card, navigator, scrim). */
+  onClose?: () => void;
   /**
-   * A 1-based line the spotlight keeps bright besides the marks: the debugger's current line,
-   * which moves with every step. It never turns the spotlight on by itself.
+   * The debugger moved (step, run, reset) since the last focus move: the spotlight scrim steps
+   * aside, so the execution line is never in the dark. The next focus move brings it back.
    */
-  keepBright?: number;
+  spotlightQuiet?: boolean;
 }
 
 /**
  * Persistent annotation decorations (whole-line band + gutter glyph + overview-ruler mark, hover
- * with the hint), the spotlight that dims every line outside the marks and the kept line while the
- * "dim the rest" setting is on, and, for the focused annotation, a hint card anchored under its
- * range as a Monaco content widget sitting in a view zone of its own height. Returns the card's
- * portal, to be rendered by the caller.
+ * with the hint), for the focused annotation a hint card anchored under its range as a Monaco
+ * content widget sitting in a view zone of its own height, and, while the "Spotlight" setting is
+ * on, the scrim that darkens the page around that annotation (`useSpotlight`). The card can be
+ * dragged by its head to see what is under it (`CardDrag`); the view zone stays under the target.
+ * Returns the card's and the scrim's portals, to be rendered by the caller.
  */
 export function useLineAnnotations({
-  editor, monaco, ready, marks, focusIndex, focusNonce, position, contentKey, keepBright,
+  editor, monaco, ready, marks, focusIndex, focusNonce, position, contentKey, onClose, spotlightQuiet = false,
 }: LineAnnotationsArgs): ReactNode {
   const decoRef = useRef<MonacoT.editor.IEditorDecorationsCollection>();
-  const dimRef = useRef<MonacoT.editor.IEditorDecorationsCollection>();
-  const [dimmed, setDimmed] = useState(false);
   const spotlight = useSettings((s) => s.annSpotlight);
-  const [cardOpen, setCardOpen] = useState(true);
   const host = useMemo(() => {
     const el = document.createElement('div');
     el.className = 'ann-card-host';
@@ -150,7 +127,51 @@ export function useLineAnnotations({
       : null),
   }), [host, monaco]);
 
-  useEffect(() => { setCardOpen(true); }, [focusNonce]);
+  // The card's drag offset, applied as a transform on the widget's DOM node on top of Monaco's
+  // placement. Every focus move and every new text puts the card back under its target.
+  const [drag] = useState(() => new CardDrag());
+  useLayoutEffect(() => {
+    if (drag.reset([focusNonce, focusIndex, contentKey])) host.style.transform = '';
+    host.classList.remove('is-dragging');
+  }, [drag, host, focusNonce, focusIndex, contentKey]);
+  const dragHandlers = useMemo(() => {
+    const end = (e: PointerEvent<HTMLElement>) => {
+      if (!drag.dragging) return;
+      drag.end();
+      host.classList.remove('is-dragging');
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    };
+    return {
+      onPointerDown: (e: PointerEvent<HTMLElement>) => {
+        const card = host.querySelector('.ann-card');
+        const dom = editor?.getDomNode();
+        if (e.button !== 0 || !card || !dom || !editor || !startsDrag(e.target as Element)) return;
+        e.preventDefault();
+        const r = card.getBoundingClientRect();
+        const box = dom.getBoundingClientRect();
+        const layout = editor.getLayoutInfo();
+        drag.start(
+          { x: e.clientX, y: e.clientY },
+          { x: r.left, y: r.top, w: r.width, h: r.height },
+          // The editor's visible area, scrollbars excluded.
+          {
+            x: box.left,
+            y: box.top,
+            w: layout.width - layout.verticalScrollbarWidth,
+            h: layout.height - layout.horizontalScrollbarHeight,
+          },
+        );
+        e.currentTarget.setPointerCapture(e.pointerId);
+        host.classList.add('is-dragging');
+      },
+      onPointerMove: (e: PointerEvent<HTMLElement>) => {
+        if (drag.dragging) host.style.transform = offsetTransform(drag.move({ x: e.clientX, y: e.clientY }));
+      },
+      onPointerUp: end,
+      onPointerCancel: end,
+      onLostPointerCapture: end,
+    };
+  }, [drag, host, editor]);
 
   // Decorations follow the marks, the focus and the text they were resolved against.
   useEffect(() => {
@@ -160,33 +181,10 @@ export function useLineAnnotations({
     decoRef.current.set(markDecorations(monaco, marks, focusIndex, lineCount));
   }, [ready, editor, monaco, marks, focusIndex, contentKey]);
 
-  // The spotlight's lines follow the marks, the text and the kept line, and are laid down whether
-  // or not the setting is on: the setting only flips the container attribute below, so turning it
-  // on or off fades the lines already on screen instead of re-rendering them. A debugger step that
-  // moves the kept line costs one pass over the marks and a swap of these few ranges.
-  useEffect(() => {
-    if (!ready || !editor || !monaco) return;
-    const model = editor.getModel();
-    const decos = model ? dimDecorations(monaco, model, marks, keepBright) : [];
-    dimRef.current ??= editor.createDecorationsCollection();
-    dimRef.current.set(decos);
-    setDimmed(decos.length > 0);
-  }, [ready, editor, monaco, marks, contentKey, keepBright]);
-
-  useEffect(() => {
-    const el = ready ? editor?.getContainerDomNode() : undefined;
-    if (!el || !spotlight || !dimmed) return;
-    el.setAttribute('data-ann-spotlight', '');
-    return () => el.removeAttribute('data-ann-spotlight');
-  }, [ready, editor, spotlight, dimmed]);
-
-  useEffect(() => () => {
-    decoRef.current?.clear();
-    dimRef.current?.clear();
-  }, []);
+  useEffect(() => () => decoRef.current?.clear(), []);
 
   const focused = marks.find((m) => m.index === focusIndex);
-  const showCard = !!focused && cardOpen;
+  const showCard = !!focused;
 
   const model = ready ? editor?.getModel() : undefined;
   const lineCount = model?.getLineCount() ?? 0;
@@ -245,25 +243,50 @@ export function useLineAnnotations({
     zoneRef.current = undefined;
   }, [editor, widget]);
 
-  if (!showCard || !focused) return null;
-  return createPortal(
-    <HintCard
-      severity={focused.severity}
-      title={focused.title}
-      hint={focused.hint}
-      position={position}
-      onClose={() => setCardOpen(false)}
-    />,
-    host,
+  const scrim = useSpotlight({
+    editor,
+    ready,
+    enabled: spotlight,
+    target: anchorLine === undefined ? undefined : focused,
+    quiet: spotlightQuiet,
+    card: host,
+  });
+
+  return (
+    <>
+      {showCard && focused && createPortal(
+        <HintCard
+          severity={focused.severity}
+          title={focused.title}
+          hint={focused.hint}
+          position={position}
+          onClose={onClose}
+          drag={dragHandlers}
+        />,
+        host,
+      )}
+      {scrim}
+    </>
   );
 }
 
-export function HintCard({ severity, title, hint, position, onClose, note }: {
+export interface HintCardDrag {
+  onPointerDown: (e: PointerEvent<HTMLElement>) => void;
+  onPointerMove: (e: PointerEvent<HTMLElement>) => void;
+  onPointerUp: (e: PointerEvent<HTMLElement>) => void;
+  onPointerCancel: (e: PointerEvent<HTMLElement>) => void;
+  onLostPointerCapture: (e: PointerEvent<HTMLElement>) => void;
+}
+
+export function HintCard({ severity, title, hint, position, onClose, note, drag }: {
   severity: AnnotationSeverity;
   title: string;
   hint?: string;
   position?: string;
+  /** The ✕: closes the annotations altogether. */
   onClose?: () => void;
+  /** Pointer handlers that make the head a drag handle. */
+  drag?: HintCardDrag;
   /** A status line under the title, e.g. "not found — …". */
   note?: string;
 }) {
@@ -275,12 +298,12 @@ export function HintCard({ severity, title, hint, position, onClose, note }: {
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
-      <div className="ann-card-head">
+      <div className={`ann-card-head${drag ? ' is-draggable' : ''}`} {...drag}>
         <span className="ann-sev-icon"><Codicon name={SEVERITY_ICON[severity]} /></span>
         <span className="ann-card-title">{title}</span>
         {position && <span className="ann-card-pos">{position}</span>}
         {onClose && (
-          <button type="button" className="ann-icon-btn" title="Hide this hint (the highlight stays)" aria-label="Hide hint" onClick={onClose}>
+          <button type="button" className="ann-icon-btn" title="Close annotations" aria-label="Close annotations" onClick={onClose}>
             <Codicon name="close" />
           </button>
         )}
