@@ -103,6 +103,13 @@ pub enum SerializableConstant {
         element_type: SerializableType, 
         values: Vec<SerializableConstant> 
     },
+    /// An array (from protocol version 11, to every Plutus version), shaped as a list is.
+    #[serde(rename = "ProtoArray")]
+    ProtoArray {
+        #[serde(rename = "elementType")]
+        element_type: SerializableType,
+        values: Vec<SerializableConstant>
+    },
     #[serde(rename = "ProtoPair")]
     ProtoPair { 
         #[serde(rename = "first_type")]
@@ -133,8 +140,9 @@ pub enum SerializableConstant {
         #[serde(rename = "bytes")]
         bytes: String, // hex-encoded Fp12 element (576 bytes)
     },
-    /// A ledger value (Plutus V3 from protocol version 11): currency symbols ascending, each with
-    /// its token names ascending; quantities are decimal strings (signed 128-bit).
+    /// A ledger value (from protocol version 11, to every Plutus version): currency symbols
+    /// ascending, each with its token names ascending; quantities are decimal strings (signed
+    /// 128-bit).
     #[serde(rename = "Value")]
     Value { entries: Vec<SerializableValueAsset> },
 }
@@ -190,6 +198,11 @@ pub enum SerializableType {
     List { 
         #[serde(rename = "elementType")]
         element_type: Box<SerializableType> 
+    },
+    #[serde(rename = "Array")]
+    Array {
+        #[serde(rename = "elementType")]
+        element_type: Box<SerializableType>
     },
     #[serde(rename = "Pair")]
     Pair { 
@@ -352,6 +365,12 @@ pub enum SerializableConstantLazy {
         #[serde(rename = "elementType")]
         element_type: SerializableType, 
         values: Vec<LazyLoadableConstant> 
+    },
+    #[serde(rename = "ProtoArray")]
+    ProtoArray {
+        #[serde(rename = "elementType")]
+        element_type: SerializableType,
+        values: Vec<LazyLoadableConstant>
     },
     #[serde(rename = "ProtoPair")]
     ProtoPair { 

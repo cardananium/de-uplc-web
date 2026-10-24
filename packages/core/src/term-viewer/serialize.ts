@@ -241,6 +241,7 @@ class TermSerializer {
         };
 
       case 'ProtoList':
+      case 'ProtoArray':
         return {
           type: constant.type,
           value: {
@@ -298,8 +299,8 @@ class TermSerializer {
     const inlineTypes = ['Bool', 'Integer', 'String', 'ByteString', 'Unit'];
 
     // Types that should use multiline format (complex types)
-    // Note: 'List' is the same as 'ProtoList', 'Pair' is the same as 'ProtoPair'
-    const multilineTypes = ['Data', 'Bls12_381G1Element', 'Bls12_381G2Element', 'Bls12_381MlResult', 'Value', 'ProtoList', 'ProtoPair', 'List', 'Pair'];
+    // Note: 'List' is the same as 'ProtoList', 'Array' as 'ProtoArray', 'Pair' as 'ProtoPair'
+    const multilineTypes = ['Data', 'Bls12_381G1Element', 'Bls12_381G2Element', 'Bls12_381MlResult', 'Value', 'ProtoList', 'ProtoArray', 'ProtoPair', 'List', 'Array', 'Pair'];
 
     // If explicitly marked as multiline, use multiline format
     if (multilineTypes.includes(type)) {
@@ -360,9 +361,9 @@ class TermSerializer {
     const actualType = constantData.type;
     const actualValue = constantData.value;
 
-    // Handle structured types (ProtoList, ProtoPair and their aliases)
-    if (actualType === 'ProtoList' || actualType === 'List' || actualType === 'ProtoPair' || actualType === 'Pair') {
-      const standardType = actualType === 'List' ? 'ProtoList' : actualType === 'Pair' ? 'ProtoPair' : actualType;
+    // Handle structured types (ProtoList, ProtoArray, ProtoPair and their aliases)
+    if (actualType === 'ProtoList' || actualType === 'List' || actualType === 'ProtoArray' || actualType === 'Array' || actualType === 'ProtoPair' || actualType === 'Pair') {
+      const standardType = actualType === 'List' ? 'ProtoList' : actualType === 'Array' ? 'ProtoArray' : actualType === 'Pair' ? 'ProtoPair' : actualType;
       return this.renderStructuredType(standardType, actualValue, line, indentLevel, true);
     }
 
@@ -404,10 +405,10 @@ class TermSerializer {
     let output = '';
     let line = currentLine;
 
-    if (type === 'ProtoList') {
+    if (type === 'ProtoList' || type === 'ProtoArray') {
       const protoListValue = value as ProtoListData;
 
-      // ProtoList structure: elementType + values array
+      // ProtoList (and ProtoArray) structure: elementType + values array
       if (nestedConsts) {
         output = `${type} {`;
       } else {
@@ -714,8 +715,8 @@ class TermSerializer {
           currentLine += 1;
         } else {
           // Use multiline format for complex types (Data, Bls12_381 types, etc.)
-          if (constantData.type === 'ProtoList' || constantData.type === 'ProtoPair') {
-            // Use structured rendering for ProtoList and ProtoPair
+          if (constantData.type === 'ProtoList' || constantData.type === 'ProtoArray' || constantData.type === 'ProtoPair') {
+            // Use structured rendering for ProtoList, ProtoArray and ProtoPair
             const firstLineOutput = `${this.getShortTermType(term.term_type)} ${constantData.type} {`;
             if (shouldCreateHints) {
               const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;

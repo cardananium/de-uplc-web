@@ -52,7 +52,7 @@ describe('serializeTermUplc — canonical UPLC rendering', () => {
     );
   });
 
-  it('renders constants: bytestring, bool, unit, list and data', () => {
+  it('renders constants: bytestring, bool, unit, list, array and data', () => {
     const con = (c: Constant): string =>
       serializeTermUplc({ term_type: 'Constant', id: 1, constant: c }).text;
     expect(con({ type: 'ByteString', value: 'deadbeef' })).toBe('(con bytestring #deadbeef)');
@@ -61,6 +61,10 @@ describe('serializeTermUplc — canonical UPLC rendering', () => {
     expect(con({ type: 'ProtoList', elementType: { type: 'Integer' }, values: [
       { type: 'Integer', value: '1' }, { type: 'Integer', value: '2' },
     ] })).toBe('(con (list integer) [1, 2])');
+    // An array is written as a list is, under its own type.
+    expect(con({ type: 'ProtoArray', elementType: { type: 'List', elementType: { type: 'Integer' } }, values: [
+      { type: 'ProtoList', elementType: { type: 'Integer' }, values: [{ type: 'Integer', value: '1' }] },
+    ] })).toBe('(con (array (list integer)) [[1]])');
     // Data: Constr tag 121 → constructor index 0; with a B field.
     expect(con({ type: 'Data', data: {
       type: 'Constr', tag: 121, fields: [{ type: 'BoundedBytes', value: 'ab' }],

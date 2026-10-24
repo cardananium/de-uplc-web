@@ -98,7 +98,7 @@ export class TruncationInfoNode implements UplcNode {
     }
 }
 
-/** A UPLC constant type (recursive for List/Pair). */
+/** A UPLC constant type (recursive for List/Array/Pair). */
 export class TypeNode implements UplcNode {
     constructor(private type: Type, private label: string = 'Type') {}
     toViewModel(): NodeView {
@@ -110,6 +110,7 @@ export class TypeNode implements UplcNode {
             case 'ByteString': iconName = 'symbol-array'; break;
             case 'Unit': iconName = 'symbol-misc'; break;
             case 'List': iconName = 'list-unordered'; break;
+            case 'Array': iconName = 'list-unordered'; break;
             case 'Pair': iconName = 'symbol-interface'; break;
             case 'Bls12_381G1Element':
             case 'Bls12_381G2Element':
@@ -129,6 +130,7 @@ export class TypeNode implements UplcNode {
             case 'ByteString': return [new SimpleNode('ByteStringType')];
             case 'Unit': return [new SimpleNode('UnitType')];
             case 'List': return [new SimpleNode('ListType'), new TypeNode(t.elementType, 'Element Type')];
+            case 'Array': return [new SimpleNode('ArrayType'), new TypeNode(t.elementType, 'Element Type')];
             case 'Pair': return [new SimpleNode('PairType'), new TypeNode(t.first_type, 'First Type'), new TypeNode(t.second_type, 'Second Type')];
             case 'Bls12_381G1Element': return [new SimpleNode('BLS12-381 G1 Element')];
             case 'Bls12_381G2Element': return [new SimpleNode('BLS12-381 G2 Element')];

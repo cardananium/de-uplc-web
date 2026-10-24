@@ -108,6 +108,8 @@ function constant(c: Constant): string {
     case 'Unit': return 'unit ()';
     case 'ProtoList':
       return `(list ${typeStr(c.elementType)}) [${c.values.map(constItem).join(', ')}]`;
+    case 'ProtoArray':
+      return `(array ${typeStr(c.elementType)}) [${c.values.map(constItem).join(', ')}]`;
     case 'ProtoPair':
       return `(pair ${typeStr(c.first_type)} ${typeStr(c.second_type)}) (${constItem(c.first_element)}, ${constItem(c.second_element)})`;
     case 'Data': return `data (${plutusData(c.data)})`;
@@ -131,6 +133,7 @@ function constItem(c: Constant): string {
     case 'Bool': return c.value ? 'True' : 'False';
     case 'Unit': return '()';
     case 'ProtoList': return `[${c.values.map(constItem).join(', ')}]`;
+    case 'ProtoArray': return `[${c.values.map(constItem).join(', ')}]`;
     case 'ProtoPair': return `(${constItem(c.first_element)}, ${constItem(c.second_element)})`;
     case 'Data': return plutusData(c.data);
     case 'Bls12_381G1Element': return `0x${c.serialized}`;
@@ -161,6 +164,7 @@ function typeStr(t: Type): string {
     case 'ByteString': return 'bytestring';
     case 'Unit': return 'unit';
     case 'List': return `(list ${typeStr(t.elementType)})`;
+    case 'Array': return `(array ${typeStr(t.elementType)})`;
     case 'Pair': return `(pair ${typeStr(t.first_type)} ${typeStr(t.second_type)})`;
     case 'Data': return 'data';
     case 'Bls12_381G1Element': return 'bls12_381_G1_element';

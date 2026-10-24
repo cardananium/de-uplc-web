@@ -459,6 +459,29 @@
             },
             {
               "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "ProtoArray",
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "$ref": "#/$defs/LazyLoadableConstant"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "type",
+                "elementType",
+                "values"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "first_element": {
                   "$ref": "#/$defs/LazyLoadableConstant"
                 },
@@ -1038,6 +1061,22 @@
             },
             {
               "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "Array",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "elementType"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "first_type": {
                   "$ref": "#/$defs/SerializableType"
                 },
@@ -1427,6 +1466,30 @@
               "type": "object"
             },
             {
+              "description": "An array (from protocol version 11, to every Plutus version), shaped as a list is.",
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "ProtoArray",
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "$ref": "#/$defs/SerializableConstant"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "type",
+                "elementType",
+                "values"
+              ],
+              "type": "object"
+            },
+            {
               "properties": {
                 "first_element": {
                   "$ref": "#/$defs/SerializableConstant"
@@ -1519,7 +1582,7 @@
               "type": "object"
             },
             {
-              "description": "A ledger value (Plutus V3 from protocol version 11): currency symbols ascending, each with\nits token names ascending; quantities are decimal strings (signed 128-bit).",
+              "description": "A ledger value (from protocol version 11, to every Plutus version): currency symbols\nascending, each with its token names ascending; quantities are decimal strings (signed\n128-bit).",
               "properties": {
                 "entries": {
                   "items": {
@@ -2008,6 +2071,22 @@
             },
             {
               "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "Array",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "elementType"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "first_type": {
                   "$ref": "#/$defs/SerializableType"
                 },
@@ -2344,6 +2423,30 @@
               "type": "object"
             },
             {
+              "description": "An array (from protocol version 11, to every Plutus version), shaped as a list is.",
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "ProtoArray",
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "$ref": "#/$defs/SerializableConstant"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "type",
+                "elementType",
+                "values"
+              ],
+              "type": "object"
+            },
+            {
               "properties": {
                 "first_element": {
                   "$ref": "#/$defs/SerializableConstant"
@@ -2436,7 +2539,7 @@
               "type": "object"
             },
             {
-              "description": "A ledger value (Plutus V3 from protocol version 11): currency symbols ascending, each with\nits token names ascending; quantities are decimal strings (signed 128-bit).",
+              "description": "A ledger value (from protocol version 11, to every Plutus version): currency symbols\nascending, each with its token names ascending; quantities are decimal strings (signed\n128-bit).",
               "properties": {
                 "entries": {
                   "items": {
@@ -2928,6 +3031,22 @@
                 },
                 "type": {
                   "const": "List",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "elementType"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "Array",
                   "type": "string"
                 }
               },
@@ -3711,6 +3830,29 @@
             },
             {
               "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "ProtoArray",
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "$ref": "#/$defs/LazyLoadableConstant"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "type",
+                "elementType",
+                "values"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "first_element": {
                   "$ref": "#/$defs/LazyLoadableConstant"
                 },
@@ -4329,6 +4471,22 @@
             },
             {
               "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "Array",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "elementType"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "first_type": {
                   "$ref": "#/$defs/SerializableType"
                 },
@@ -4890,6 +5048,30 @@
               "type": "object"
             },
             {
+              "description": "An array (from protocol version 11, to every Plutus version), shaped as a list is.",
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "ProtoArray",
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "$ref": "#/$defs/SerializableConstant"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "type",
+                "elementType",
+                "values"
+              ],
+              "type": "object"
+            },
+            {
               "properties": {
                 "first_element": {
                   "$ref": "#/$defs/SerializableConstant"
@@ -4982,7 +5164,7 @@
               "type": "object"
             },
             {
-              "description": "A ledger value (Plutus V3 from protocol version 11): currency symbols ascending, each with\nits token names ascending; quantities are decimal strings (signed 128-bit).",
+              "description": "A ledger value (from protocol version 11, to every Plutus version): currency symbols\nascending, each with its token names ascending; quantities are decimal strings (signed\n128-bit).",
               "properties": {
                 "entries": {
                   "items": {
@@ -5618,6 +5800,22 @@
                 },
                 "type": {
                   "const": "List",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "elementType"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "Array",
                   "type": "string"
                 }
               },
@@ -6333,6 +6531,29 @@
                 },
                 "type": {
                   "const": "ProtoList",
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "$ref": "#/$defs/LazyLoadableConstant"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "type",
+                "elementType",
+                "values"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "ProtoArray",
                   "type": "string"
                 },
                 "values": {
@@ -7102,6 +7323,22 @@
                 },
                 "type": {
                   "const": "List",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "elementType"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "Array",
                   "type": "string"
                 }
               },
@@ -10641,6 +10878,30 @@
               "type": "object"
             },
             {
+              "description": "An array (from protocol version 11, to every Plutus version), shaped as a list is.",
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "ProtoArray",
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "$ref": "#/$defs/SerializableConstant"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "type",
+                "elementType",
+                "values"
+              ],
+              "type": "object"
+            },
+            {
               "properties": {
                 "first_element": {
                   "$ref": "#/$defs/SerializableConstant"
@@ -10733,7 +10994,7 @@
               "type": "object"
             },
             {
-              "description": "A ledger value (Plutus V3 from protocol version 11): currency symbols ascending, each with\nits token names ascending; quantities are decimal strings (signed 128-bit).",
+              "description": "A ledger value (from protocol version 11, to every Plutus version): currency symbols\nascending, each with its token names ascending; quantities are decimal strings (signed\n128-bit).",
               "properties": {
                 "entries": {
                   "items": {
@@ -10977,6 +11238,22 @@
                 },
                 "type": {
                   "const": "List",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "elementType"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "Array",
                   "type": "string"
                 }
               },
@@ -11510,6 +11787,30 @@
               "type": "object"
             },
             {
+              "description": "An array (from protocol version 11, to every Plutus version), shaped as a list is.",
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "ProtoArray",
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "$ref": "#/$defs/SerializableConstant"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "type",
+                "elementType",
+                "values"
+              ],
+              "type": "object"
+            },
+            {
               "properties": {
                 "first_element": {
                   "$ref": "#/$defs/SerializableConstant"
@@ -11602,7 +11903,7 @@
               "type": "object"
             },
             {
-              "description": "A ledger value (Plutus V3 from protocol version 11): currency symbols ascending, each with\nits token names ascending; quantities are decimal strings (signed 128-bit).",
+              "description": "A ledger value (from protocol version 11, to every Plutus version): currency symbols\nascending, each with its token names ascending; quantities are decimal strings (signed\n128-bit).",
               "properties": {
                 "entries": {
                   "items": {
@@ -12094,6 +12395,22 @@
                 },
                 "type": {
                   "const": "List",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "elementType"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "Array",
                   "type": "string"
                 }
               },
@@ -12733,6 +13050,29 @@
             },
             {
               "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "ProtoArray",
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "$ref": "#/$defs/LazyLoadableConstant"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "type",
+                "elementType",
+                "values"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "first_element": {
                   "$ref": "#/$defs/LazyLoadableConstant"
                 },
@@ -13351,6 +13691,22 @@
             },
             {
               "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "Array",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "elementType"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "first_type": {
                   "$ref": "#/$defs/SerializableType"
                 },
@@ -13701,6 +14057,30 @@
               "type": "object"
             },
             {
+              "description": "An array (from protocol version 11, to every Plutus version), shaped as a list is.",
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "ProtoArray",
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "$ref": "#/$defs/SerializableConstant"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "type",
+                "elementType",
+                "values"
+              ],
+              "type": "object"
+            },
+            {
               "properties": {
                 "first_element": {
                   "$ref": "#/$defs/SerializableConstant"
@@ -13793,7 +14173,7 @@
               "type": "object"
             },
             {
-              "description": "A ledger value (Plutus V3 from protocol version 11): currency symbols ascending, each with\nits token names ascending; quantities are decimal strings (signed 128-bit).",
+              "description": "A ledger value (from protocol version 11, to every Plutus version): currency symbols\nascending, each with its token names ascending; quantities are decimal strings (signed\n128-bit).",
               "properties": {
                 "entries": {
                   "items": {
@@ -14319,6 +14699,22 @@
                 },
                 "type": {
                   "const": "List",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "elementType"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "elementType": {
+                  "$ref": "#/$defs/SerializableType"
+                },
+                "type": {
+                  "const": "Array",
                   "type": "string"
                 }
               },

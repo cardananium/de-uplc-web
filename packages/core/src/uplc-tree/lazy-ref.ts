@@ -133,6 +133,7 @@ function valuePlaceholderIcon(p: Placeholder): string {
         case 'Bool': return 'symbol-boolean';
         case 'Unit': return 'symbol-misc';
         case 'ProtoList': return 'list-unordered';
+        case 'ProtoArray': return 'list-unordered';
         case 'ProtoPair': return 'symbol-interface';
         case 'Data': return 'symbol-object';
         default: return 'symbol-constant';
@@ -165,6 +166,7 @@ function constantView(c: ConstantLazy, base: string): NodeView {
     c.type === 'String' ? 'symbol-string' :
     c.type === 'Bool' ? 'symbol-boolean' :
     c.type === 'ProtoList' ? 'list-unordered' :
+    c.type === 'ProtoArray' ? 'list-unordered' :
     c.type === 'ProtoPair' ? 'symbol-interface' :
     c.type === 'Data' ? 'symbol-object' :
     c.type === 'Unit' ? 'symbol-misc' : 'symbol-constant';
@@ -177,6 +179,7 @@ function constantView(c: ConstantLazy, base: string): NodeView {
   else if (c.type === 'Bool') { label = `${base}: ${c.value}`; collapsible = false; }
   else if (c.type === 'ByteString') ({ label, collapsible } = valuePreview(`${base}: 0x`, c.value));
   else if (c.type === 'ProtoList') { label = `${base}: List[${c.elementType.type}] (${c.values.length} items)`; collapsible = true; }
+  else if (c.type === 'ProtoArray') { label = `${base}: Array[${c.elementType.type}] (${c.values.length} items)`; collapsible = true; }
   else if (c.type === 'ProtoPair') { label = `${base}: Pair<${c.first_type.type}, ${c.second_type.type}>`; collapsible = true; }
   else if (c.type === 'Bls12_381G1Element') ({ label, collapsible } = valuePreview(`${base}: BLS G1 0x`, c.serialized));
   else if (c.type === 'Bls12_381G2Element') ({ label, collapsible } = valuePreview(`${base}: BLS G2 0x`, c.serialized));
@@ -320,6 +323,10 @@ function childrenFor(
         case 'ProtoList': return [
           new TypeNode(c.elementType as Type, 'Element Type'),
           ...c.values.map((val, i) => constant(val, `List item ${i}`, [...path, 'values', String(i)])),
+        ];
+        case 'ProtoArray': return [
+          new TypeNode(c.elementType as Type, 'Element Type'),
+          ...c.values.map((val, i) => constant(val, `Array item ${i}`, [...path, 'values', String(i)])),
         ];
         case 'ProtoPair': return [
           new TypeNode(c.first_type as Type, 'First Type'),

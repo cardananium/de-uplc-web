@@ -913,6 +913,59 @@ fn value_builtins_step_under_van_rossem() {
     assert!(lazy.contains(r#""name":"bb","quantity":"7""#), "{lazy}");
 }
 
+/// Arrays (CIP-138) step under the current protocol, and an array shows in every view as a list
+/// does, under its own type: in the program, in the eager views, as a placeholder in a lazy one,
+/// and item by item by path.
+#[test]
+fn arrays_step_and_show_as_lists_do() {
+    let src = "(program 1.1.0 [(lam a [(force (builtin indexArray)) a (con integer 1)]) \
+               [(force (builtin listToArray)) (con (list (array integer)) [[5], [6, 7]])]])";
+    let mut session = new_session_from_program(src, "v2").unwrap();
+    let script = session.get_script().unwrap();
+    assert!(
+        script.contains(r#"{"type":"ProtoList","elementType":{"type":"Array","elementType":{"type":"Integer"}},"values":[{"type":"ProtoArray","elementType":{"type":"Integer"},"values":[{"type":"Integer","value":"5"}]}"#),
+        "{script}"
+    );
+
+    // Step to where the array is bound.
+    loop {
+        let env: serde_json::Value = serde_json::from_str(&session.get_current_env().unwrap()).unwrap();
+        if env["values"].as_array().is_some_and(|values| !values.is_empty()) {
+            break;
+        }
+        assert!(session.step().unwrap().contains(r#""status_type":"Ready""#), "the array is never bound");
+    }
+    let env = session.get_current_env().unwrap();
+    assert!(env.contains(r#""constant":{"type":"ProtoArray","elementType":{"type":"Array","elementType":{"type":"Integer"}},"values":["#), "{env}");
+
+    let lazy = session.get_current_env_lazy("[]".into(), false).unwrap();
+    assert!(lazy.contains(r#"{"_type":"Con","_kind":"ProtoArray","_length":null,"_path":["values","0"]}"#), "{lazy}");
+    let array = session.get_current_env_lazy(r#"["values","0","constant"]"#.into(), false).unwrap();
+    assert!(array.contains(r#""values":[{"_type":"ProtoArray","_kind":"1 items","_length":1,"_path":["values","0","constant","values","0"]}"#), "{array}");
+    let item = session.get_current_env_lazy(r#"["values","0","constant","values","1","values","0"]"#.into(), false).unwrap();
+    assert_eq!(item, r#"{"type":"Integer","value":"6"}"#);
+
+    assert_eq!(run_to_end(&mut session), "Done");
+    assert!(session.get_machine_state().unwrap().contains(r#"{"type":"ProtoArray","elementType":{"type":"Integer"},"values":[{"type":"Integer","value":"6"},{"type":"Integer","value":"7"}]}"#));
+}
+
+/// Before Van Rossem an array constant is refused, as the ledger would refuse it.
+#[test]
+fn array_constant_refused_before_van_rossem() {
+    let config = |protocol: u16| {
+        serde_json::json!({
+            "script": "(program 1.1.0 [(force (builtin lengthOfArray)) (con (array integer) [1, 2])])",
+            "language": "v2",
+            "protocol_version": protocol,
+        })
+        .to_string()
+    };
+    assert!(new_session_from_parts(&config(10)).is_err());
+    let mut session = new_session_from_parts(&config(11)).unwrap();
+    assert_eq!(run_to_end(&mut session), "Done");
+    assert!(session.get_machine_state().unwrap().contains(r#"{"type":"Integer","value":"2"}"#));
+}
+
 /// The protocol version a parts session carries reaches the stepper: before Van Rossem a V3
 /// program holding a `Value` constant is refused, as the ledger would refuse it.
 #[test]

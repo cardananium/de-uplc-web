@@ -382,8 +382,9 @@ impl<'n> Writer<'n> {
                 let _ = write!(self.out, r#"{{"type":"Bool","value":{b}}}"#);
             }
             Constant::Unit => self.out.push_str(r#"{"type":"Unit"}"#),
-            Constant::ProtoList(typ, items) => {
-                self.out.push_str(r#"{"type":"ProtoList","elementType":"#);
+            Constant::ProtoList(typ, items) | Constant::ProtoArray(typ, items) => {
+                let tag = if matches!(constant, Constant::ProtoArray(..)) { "ProtoArray" } else { "ProtoList" };
+                let _ = write!(self.out, r#"{{"type":"{tag}","elementType":"#);
                 if how.detail == Detail::Shallow {
                     let mut tail = String::from(r#","values":["#);
                     for (i, item) in items.iter().enumerate() {
@@ -466,6 +467,12 @@ impl<'n> Writer<'n> {
             Type::Value => "Value",
             Type::List(element) => {
                 self.out.push_str(r#"{"type":"List","elementType":"#);
+                tasks.push(Task::Text("}"));
+                tasks.push(Task::Type(element));
+                return;
+            }
+            Type::Array(element) => {
+                self.out.push_str(r#"{"type":"Array","elementType":"#);
                 tasks.push(Task::Text("}"));
                 tasks.push(Task::Type(element));
                 return;
@@ -791,6 +798,7 @@ fn value_kind(value: &Value) -> Kind {
                 Constant::Bool(_) => "Bool",
                 Constant::Unit => "Unit",
                 Constant::ProtoList(_, _) => "ProtoList",
+                Constant::ProtoArray(_, _) => "ProtoArray",
                 Constant::ProtoPair(_, _, _, _) => "ProtoPair",
                 Constant::Data(_) => "Data",
                 Constant::Bls12_381G1Element(_)
@@ -819,6 +827,7 @@ fn constant_kind(constant: &Constant) -> Kind {
         Constant::Bool(b) => ("Bool", b.to_string(), None),
         Constant::Unit => ("Unit", "()".to_string(), None),
         Constant::ProtoList(_, items) => ("ProtoList", format!("{} items", items.len()), Some(items.len())),
+        Constant::ProtoArray(_, items) => ("ProtoArray", format!("{} items", items.len()), Some(items.len())),
         Constant::ProtoPair(..) => ("ProtoPair", "Pair".to_string(), None),
         Constant::Data(_) => ("Data", "PlutusData".to_string(), None),
         Constant::Bls12_381G1Element(_) => ("Bls12_381G1Element", "G1 point".to_string(), None),
@@ -1100,7 +1109,7 @@ fn walk<'a>(
                     return found(constant);
                 }
                 match (constant, field(path.first())) {
-                    (Constant::ProtoList(_, items), Some("values")) => match path.get(1) {
+                    (Constant::ProtoList(_, items) | Constant::ProtoArray(_, items), Some("values")) => match path.get(1) {
                         Some(PathSegment::Index(index)) => match items.get(*index) {
                             Some(item) => {
                                 path = &path[2..];
@@ -1192,7 +1201,7 @@ fn check_constant_path(mut constant: &Constant, mut path: &[PathSegment]) -> Opt
             return None;
         }
         match (constant, field(path.first())) {
-            (Constant::ProtoList(_, items), Some("values")) => match path.get(1) {
+            (Constant::ProtoList(_, items) | Constant::ProtoArray(_, items), Some("values")) => match path.get(1) {
                 Some(PathSegment::Index(index)) => match items.get(*index) {
                     Some(item) => {
                         constant = item;
@@ -1210,7 +1219,7 @@ fn check_constant_path(mut constant: &Constant, mut path: &[PathSegment]) -> Opt
                 constant = second;
                 path = &path[1..];
             }
-            (Constant::ProtoList(..) | Constant::ProtoPair(..), _) => {
+            (Constant::ProtoList(..) | Constant::ProtoArray(..) | Constant::ProtoPair(..), _) => {
                 return Some(format!("Invalid navigation path {:?} for constant", path));
             }
             _ => return None,

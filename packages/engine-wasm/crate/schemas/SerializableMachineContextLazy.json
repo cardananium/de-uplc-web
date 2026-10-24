@@ -525,6 +525,29 @@
         {
           "type": "object",
           "properties": {
+            "elementType": {
+              "$ref": "#/$defs/SerializableType"
+            },
+            "type": {
+              "type": "string",
+              "const": "ProtoArray"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/LazyLoadableConstant"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "elementType",
+            "values"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
             "first_element": {
               "$ref": "#/$defs/LazyLoadableConstant"
             },
@@ -1133,6 +1156,22 @@
             "type": {
               "type": "string",
               "const": "List"
+            }
+          },
+          "required": [
+            "type",
+            "elementType"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "elementType": {
+              "$ref": "#/$defs/SerializableType"
+            },
+            "type": {
+              "type": "string",
+              "const": "Array"
             }
           },
           "required": [

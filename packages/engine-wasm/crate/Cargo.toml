@@ -7,7 +7,9 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-uplc = { git = "https://github.com/cardananium/aiken", rev = "775e949829e27f8d619c14dbf49d0f41b5489a4e" }
+# The fork's branch de-uplc-v1.1.24 (arrays, builtins gated as the ledger gates them), from a local
+# checkout until the revision is pushed; then this becomes the GitHub URL again.
+uplc = { git = "file:///home/evgenii/svc/aiken", rev = "d0b883622c59787e21cd7f56c4d14682f3d94bd7" }
 serde = { version = "1.0", features = ["derive"] }
 # `raw_value`: deep Plutus Data is written to JSON without recursion, then embedded as is.
 serde_json = { version = "1.0", features = ["raw_value"] }
