@@ -14,6 +14,11 @@ function decodeJson<T>(buffer: ArrayBuffer): T {
   return JSON.parse(decoder.decode(buffer)) as T;
 }
 
+/** The status of the step a run ended on, from the JSON bytes it crossed the worker boundary as. */
+function finalStatus(step: ArrayBuffer): DebuggerTypes.ExecutionStatus {
+  return decodeJson<{ term_id: number; status: DebuggerTypes.ExecutionStatus }>(step).status;
+}
+
 /**
  * Steps run per worker batch. The worker checks breakpoints per step (so hits are exact);
  * the host re-checks stop/pause between batches, so pause latency is ≤ this many steps while
@@ -185,7 +190,7 @@ export class WasmEngineHostRunner implements IDebuggerEngineRuntime, IDebuggerEn
     if (outcome.outcome === 'done' || outcome.outcome === 'error') {
       this.needStop = true;
       this.isPaused = false;
-      this.onExecutionComplete?.(outcome.status, outcome.termId, false);
+      this.onExecutionComplete?.(finalStatus(outcome.step), outcome.termId, false);
       return true;
     }
     return false;
@@ -271,7 +276,7 @@ export class WasmEngineHostRunner implements IDebuggerEngineRuntime, IDebuggerEn
         if (result.outcome === 'done' || result.outcome === 'error') {
           this.needStop = true;
           this.isExecuting = false; // clear before the callback (see above) — finally is the stop/pause backstop
-          this.onExecutionComplete?.(result.status, result.termId, false); // a normal Done/CEK-Error result
+          this.onExecutionComplete?.(finalStatus(result.step), result.termId, false); // a normal Done/CEK-Error result
           break;
         }
         // 'limit' → batch exhausted without a stop reason.

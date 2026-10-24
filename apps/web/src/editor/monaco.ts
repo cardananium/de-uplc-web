@@ -95,6 +95,16 @@ function topScope(scopes: string[]): string {
   return i === -1 ? top : top.slice(i + 1);
 }
 
+/**
+ * Lines longer than this are not tokenized: the line is one plain token and the state passes on
+ * unchanged, as VS Code does by default. TextMate's time on a line grows with how deep its rule
+ * stack nests as well as with its length, and canonical UPLC writes a constant on one line — a
+ * Data value thousands of levels deep included, which would hold the editor for minutes.
+ */
+const MAX_TOKENIZED_LINE = 20_000;
+/** No line takes longer than this to tokenize; one that would keeps the tokens found so far. */
+const TOKENIZE_TIME_LIMIT_MS = 500;
+
 async function wireTextMate(monaco: MonacoNS, languageId: string, scopeName: string): Promise<void> {
   const grammar = await getGrammar(scopeName);
   if (!grammar) {
@@ -103,12 +113,13 @@ async function wireTextMate(monaco: MonacoNS, languageId: string, scopeName: str
   monaco.languages.setTokensProvider(languageId, {
     getInitialState: () => new TMState(INITIAL),
     tokenize: (line: string, state: MonacoT.languages.IState) => {
-      const result = grammar.tokenizeLine(line, (state as TMState).ruleStack);
+      if (line.length > MAX_TOKENIZED_LINE) return { tokens: [{ startIndex: 0, scopes: '' }], endState: state };
+      const result = grammar.tokenizeLine(line, (state as TMState).ruleStack, TOKENIZE_TIME_LIMIT_MS);
       const tokens = result.tokens.map((t) => ({
         startIndex: t.startIndex,
         scopes: topScope(t.scopes),
       }));
-      return { tokens, endState: new TMState(result.ruleStack) };
+      return { tokens, endState: result.stoppedEarly ? state : new TMState(result.ruleStack) };
     },
   });
 }

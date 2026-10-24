@@ -22,10 +22,12 @@ function toMonacoRange(r: Range): MonacoT.IRange {
   };
 }
 
-function toMonacoSymbol(
+/** The outline of the decompiled code. Definitions nest as deep as the decompiled code does, and a
+ *  deep script decompiles deep, so the symbol tree is built with an explicit stack. */
+function toMonacoSymbols(
   monaco: typeof import('monaco-editor'),
-  def: Definition,
-): MonacoT.languages.DocumentSymbol {
+  defs: Definition[],
+): MonacoT.languages.DocumentSymbol[] {
   const kindMap: Record<Definition['kind'], MonacoT.languages.SymbolKind> = {
     validator: monaco.languages.SymbolKind.Class,
     purpose: monaco.languages.SymbolKind.Method,
@@ -35,20 +37,31 @@ function toMonacoSymbol(
     param: monaco.languages.SymbolKind.Variable,
     pattern: monaco.languages.SymbolKind.Variable,
   };
-  return {
+  const symbol = (def: Definition): MonacoT.languages.DocumentSymbol => ({
     name: def.name,
     detail: def.kind,
     kind: kindMap[def.kind],
     tags: [],
     range: toMonacoRange(def.range),
     selectionRange: toMonacoRange(def.nameRange),
-    children: def.children.map((c) => toMonacoSymbol(monaco, c)),
-  };
+    children: [],
+  });
+  const roots = defs.map(symbol);
+  const pending: [Definition, MonacoT.languages.DocumentSymbol][] = defs.map((def, i) => [def, roots[i]]);
+  while (pending.length > 0) {
+    const [def, parent] = pending.pop()!;
+    for (const child of def.children) {
+      const sym = symbol(child);
+      parent.children!.push(sym);
+      pending.push([child, sym]);
+    }
+  }
+  return roots;
 }
 
 export function registerDehoskNavigation(monaco: typeof import('monaco-editor')): void {
   monaco.languages.registerDocumentSymbolProvider(DEHOSK_LANG_ID, {
-    provideDocumentSymbols: (model) => indexFor(model).definitions.map((d) => toMonacoSymbol(monaco, d)),
+    provideDocumentSymbols: (model) => toMonacoSymbols(monaco, indexFor(model).definitions),
   });
 
   monaco.languages.registerDefinitionProvider(DEHOSK_LANG_ID, {

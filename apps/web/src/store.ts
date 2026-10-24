@@ -10,6 +10,8 @@ import {
   serializeTerm,
   serializeTermUplc,
   termAtLineForBreakpoint,
+  prettyJson,
+  compactJson,
   type Budget,
   type DebuggerManagerEvents,
   type DebuggerTypes,
@@ -906,7 +908,7 @@ export const useStore = create<AppState>((set, get) => {
         // quotes stripped, rendered with the plutus-types-json grammar. Anchor the match to the
         // start of an indented line and forbid escapes in the key, so it can only unquote real
         // property names — never a string VALUE that happens to contain `\":`.
-        const content = JSON.stringify(ctx, null, 2).replace(/^(\s*)"([^"\\]+)":/gm, '$1$2:');
+        const content = prettyJson(ctx).replace(/^(\s*)"([^"\\]+)":/gm, '$1$2:');
         useTabsStore.getState().openDataTab('Script Context', content, 'plutus-types-json');
       } catch (e) {
         toast.error(`Show context failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -936,7 +938,7 @@ export const useStore = create<AppState>((set, get) => {
      *  `?context=<json>` deep-link. "" if there's no context. */
     async exportContextJson() {
       if (!session) return '';
-      try { return JSON.stringify(await session.getTxScriptContext()); } catch { return ''; }
+      try { return compactJson(await session.getTxScriptContext()); } catch { return ''; }
     },
 
     addBreakpoint(termId) {

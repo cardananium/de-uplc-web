@@ -11,10 +11,17 @@
 // `PlutusData.Int: { Int: string }`, etc.) and no JS `bigint`/BigNumber instances
 // are ever produced, so plain `JSON.stringify` is byte-identical here and keeps
 // core dependency-free (matching `uplc-tree/nodes.ts`).
+//
+// A program nests as deep as its size allows (a 17 KB script, some 35 000 levels), so the term,
+// its structured constants and the JSON of the others are all laid out line by line from an
+// explicit stack, and no line is indented past `MAX_INDENT` columns: a deeper term still starts
+// its own line, so locations and hints hold, but the text grows with the depth, not its square.
 
 import type { Constant, Term, Type } from '../debugger-types';
 import { termLabel } from './builtin-name';
 import { termIndexFor, type TermView } from './term-index';
+import { MAX_INDENT, spaces } from './indent';
+import { jsonLines } from './json-text';
 
 export interface TermLocation {
   startLine: number;
@@ -48,7 +55,6 @@ interface ProtoPairData {
   second_element: Constant;
 }
 
-type StructuredConstantData = ProtoListData | ProtoPairData;
 
 export type HintKind =
   | 'term' //             term type indicators (Apply, Lambda, etc.)
@@ -76,15 +82,8 @@ export interface SerializedTerm {
  */
 export function serializeTerm(term: Term): SerializedTerm {
   const s = new TermSerializer();
-  const result = s.processTermWithLocations(term, 0, new Set(), 0, true, '');
-  return { text: result.text, locations: s.locations, hints: s.hints };
-}
-
-/** Append a child's rendered text, re-indenting its continuation lines by `cont` (`'\n' + spaces`);
- *  the first line stays inline after the caller's `field: ` prefix. */
-function appendChild(text: string, cont: string): string {
-  const lines = text.split('\n');
-  return lines.length > 1 ? lines[0] + lines.slice(1).map((l) => cont + l).join('') : text;
+  s.walk(term);
+  return { text: s.lines.join('\n'), locations: s.locations, hints: s.hints };
 }
 
 // The three line→term lookups below live on `TermIndex` now (linear scans before; the index also
@@ -129,7 +128,17 @@ export function termAtLineForBreakpoint(
   return termIndexFor(termLocations, view).termAtLineForBreakpoint(line);
 }
 
+/** What is left to lay out: a term, a constant, a line, a comma, the end of a term's lines. */
+type Task =
+  | { k: 'term'; term: Term; column: number; lead: string; base: number }
+  | { k: 'constant'; constant: Constant; column: number; lead: string; base: number; top: boolean }
+  | { k: 'line'; column: number; text: string }
+  | { k: 'comma' }
+  | { k: 'end'; loc: TermLocation }
+  | { k: 'leave'; id: number };
+
 class TermSerializer {
+  readonly lines: string[] = [];
   readonly locations: TermLocation[] = [];
   readonly hints: TermHintInfo[] = [];
 
@@ -352,195 +361,6 @@ class TermSerializer {
     return String(value);
   }
 
-  private renderNestedConstant(type: string, value: Constant, currentLine: number, indentLevel: number): { text: string; endLine: number } {
-    let output = '';
-    let line = currentLine;
-
-    // Parse the constant data first to get consistent type and value
-    const constantData = this.parseConstantData(value);
-    const actualType = constantData.type;
-    const actualValue = constantData.value;
-
-    // Handle structured types (ProtoList, ProtoArray, ProtoPair and their aliases)
-    if (actualType === 'ProtoList' || actualType === 'List' || actualType === 'ProtoArray' || actualType === 'Array' || actualType === 'ProtoPair' || actualType === 'Pair') {
-      const standardType = actualType === 'List' ? 'ProtoList' : actualType === 'Array' ? 'ProtoArray' : actualType === 'Pair' ? 'ProtoPair' : actualType;
-      return this.renderStructuredType(standardType, actualValue, line, indentLevel, true);
-    }
-
-    // Handle Data type with special formatting
-    if (actualType === 'Data') {
-      const dataJson = JSON.stringify(actualValue, null, 2);
-      const jsonLines = dataJson.split('\n');
-
-      if (jsonLines.length > 2 && jsonLines[0] === '{' && jsonLines[jsonLines.length - 1] === '}') {
-        // Remove outer braces and adjust indentation
-        const contentLines = jsonLines.slice(1, -1).map((line) => (line.startsWith('  ') ? line.slice(2) : line));
-        output = [`${actualType} {`, contentLines.map((line) => `  ${line}`).join('\n'), '}'].join('\n');
-        line += 1 + contentLines.length + 1; // +1 for the closing brace
-      } else {
-        output = `${actualType} ${dataJson}`;
-        line += 1;
-      }
-      return { text: output, endLine: line };
-    }
-
-    // Handle other complex types with JSON representation
-    const constantJson = JSON.stringify(actualValue, null, 2);
-    const jsonLines = constantJson.split('\n');
-
-    if (jsonLines.length > 2 && jsonLines[0] === '{' && jsonLines[jsonLines.length - 1] === '}') {
-      // Remove outer braces and adjust indentation
-      const contentLines = jsonLines.slice(1, -1).map((line) => (line.startsWith('  ') ? line.slice(2) : line));
-      output = [`${actualType} {`, contentLines.map((line) => `  ${line}`).join('\n'), '}'].join('\n');
-      line += 1 + contentLines.length + 1; // +1 for the closing brace
-    } else {
-      output = `${actualType} ${constantJson}`;
-      line += 1;
-    }
-
-    return { text: output, endLine: line };
-  }
-
-  private renderStructuredType(type: string, value: StructuredConstantData, currentLine: number, indentLevel: number, nestedConsts: boolean = false): { text: string; endLine: number } {
-    let output = '';
-    let line = currentLine;
-
-    if (type === 'ProtoList' || type === 'ProtoArray') {
-      const protoListValue = value as ProtoListData;
-
-      // ProtoList (and ProtoArray) structure: elementType + values array
-      if (nestedConsts) {
-        output = `${type} {`;
-      } else {
-        output = `${this.getShortTermType('Constant')} ${type} {`;
-      }
-      line += 1; // Account for the header line
-
-      // elementType field
-      output += '\n  elementType: ';
-      line += 1;
-      const elementTypeStr = this.formatType(protoListValue.elementType);
-
-      output += elementTypeStr;
-      output += ',';
-
-      // values array
-      output += '\n  values: [';
-      line += 1;
-
-      if (protoListValue.values && Array.isArray(protoListValue.values)) {
-        for (let i = 0; i < protoListValue.values.length; i++) {
-          output += '\n    ';
-          line += 1;
-
-          // Check if element should be formatted inline or as complex type
-          if (this.shouldUseInlineFormat(elementTypeStr)) {
-            const valueData = this.parseConstantData(protoListValue.values[i]);
-            output += this.formatConstantValue(valueData.value);
-          } else {
-            // Recursively process complex constants
-            const nestedResult = this.renderNestedConstant(elementTypeStr, protoListValue.values[i], line, indentLevel + 2);
-            // For multiline nested constants, we need to indent properly
-            const nestedLines = nestedResult.text.split('\n');
-            if (nestedLines.length > 1) {
-              output += nestedLines[0];
-              output += nestedLines.slice(1).map((line) => '\n    ' + line).join('');
-            } else {
-              output += nestedResult.text;
-            }
-            // The last line is at nestedResult.endLine - 1
-            line = nestedResult.endLine - 1;
-          }
-
-          if (i < protoListValue.values.length - 1) {
-            output += ',';
-          }
-        }
-      }
-
-      output += '\n  ]';
-      line += 1;
-      output += '\n}';
-      line += 1;
-    } else if (type === 'ProtoPair') {
-      const protoPairValue = value as ProtoPairData;
-
-      // ProtoPair structure: first_type + second_type + first_element + second_element
-      if (nestedConsts) {
-        output = `${type} {`;
-      } else {
-        output = `${this.getShortTermType('Constant')} ${type} {`;
-      }
-      line += 1; // Account for the header line
-
-      // first_type field
-      output += '\n  first_type: ';
-      line += 1;
-      const firstTypeStr = this.formatType(protoPairValue.first_type);
-
-      output += firstTypeStr;
-      output += ',';
-
-      // second_type field
-      output += '\n  second_type: ';
-      line += 1;
-      const secondTypeStr = this.formatType(protoPairValue.second_type);
-
-      output += secondTypeStr;
-      output += ',';
-
-      // first_element field
-      output += '\n  first_element: ';
-      line += 1;
-
-      if (this.shouldUseInlineFormat(firstTypeStr)) {
-        const firstElementData = this.parseConstantData(protoPairValue.first_element);
-        output += this.formatConstantValue(firstElementData.value);
-      } else {
-        // Recursively process complex constants
-        const nestedResult = this.renderNestedConstant(firstTypeStr, protoPairValue.first_element, line, indentLevel + 1);
-        // For multiline nested constants, we need to indent properly
-        const nestedLines = nestedResult.text.split('\n');
-        if (nestedLines.length > 1) {
-          output += nestedLines[0];
-          output += nestedLines.slice(1).map((line) => '\n  ' + line).join('');
-        } else {
-          output += nestedResult.text;
-        }
-        // The last line is at nestedResult.endLine - 1
-        line = nestedResult.endLine - 1;
-      }
-      output += ',';
-
-      // second_element field
-      output += '\n  second_element: ';
-      line += 1;
-
-      if (this.shouldUseInlineFormat(secondTypeStr)) {
-        const secondElementData = this.parseConstantData(protoPairValue.second_element);
-        output += this.formatConstantValue(secondElementData.value);
-      } else {
-        // Recursively process complex constants
-        const nestedResult = this.renderNestedConstant(secondTypeStr, protoPairValue.second_element, line, indentLevel + 1);
-        // For multiline nested constants, we need to indent properly
-        const nestedLines = nestedResult.text.split('\n');
-        if (nestedLines.length > 1) {
-          output += nestedLines[0];
-          output += nestedLines.slice(1).map((line) => '\n  ' + line).join('');
-        } else {
-          output += nestedResult.text;
-        }
-        // The last line is at nestedResult.endLine - 1
-        line = nestedResult.endLine - 1;
-      }
-
-      output += '\n}';
-      line += 1;
-    }
-
-    return { text: output, endLine: line };
-  }
-
   private formatType(type: Type | string): string {
     if (typeof type === 'string') {
       return type;
@@ -569,295 +389,203 @@ class TermSerializer {
     }
   }
 
-  processTermWithLocations(
-    term: Term,
-    startLine: number,
-    visited: Set<string | number> = new Set(),
-    indentLevel: number = 0,
-    shouldCreateHints: boolean = true,
-    prefix: string = '',
-  ): { text: string; endLine: number } {
-    // Check for circular references
-    if (visited.has(term.id)) {
-      return {
-        text: `[Circular reference to term ${term.id}]`,
-        endLine: startLine,
-      };
-    }
+  /**
+   * Lay `root` out line by line. Each term starts on a line of its own — the field it is the value
+   * of (`fun: `) in front of it, or nothing in a list — and its own lines indent from its base
+   * column, two more for each level, as far as `MAX_INDENT`.
+   */
+  walk(root: Term): void {
+    const tasks: Task[] = [{ k: 'term', term: root, column: 0, lead: '', base: 0 }];
+    // The ids of the terms the current one is inside, so a term inside itself is not walked forever.
+    const open = new Map<number, number>();
+    const line = (column: number, text: string): Task => ({ k: 'line', column, text });
 
-    visited.add(term.id);
-    let currentLine = startLine;
-
-    const termLocations = this.locations;
-
-    // Temporarily create termLocation that will be updated later
-    const termLocationIndex = termLocations.length;
-    termLocations.push({
-      startLine: currentLine,
-      endLine: currentLine, // Will be updated later
-      termId: term.id,
-      kind: term.term_type,
-      label: termLabel(term),
-    });
-
-    let output = '';
-    switch (term.term_type) {
-      case 'Var':
-        output = `${this.getShortTermType(term.term_type)} ${term.name}`;
-        if (shouldCreateHints) {
-          // For root terms use indentLevel, for nested terms use prefix length
-          const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
+    while (tasks.length > 0) {
+      const task = tasks.pop()!;
+      switch (task.k) {
+        case 'line':
+          this.lines.push(spaces(task.column) + task.text);
+          break;
+        case 'comma':
+          this.lines[this.lines.length - 1] += ',';
+          break;
+        case 'end':
+          task.loc.endLine = this.lines.length;
+          break;
+        case 'leave': {
+          const count = open.get(task.id) ?? 0;
+          if (count <= 1) open.delete(task.id);
+          else open.set(task.id, count - 1);
+          break;
         }
-        currentLine += 1;
-        break;
-
-      case 'Apply': {
-        output = `${this.getShortTermType(term.term_type)} {`;
-        if (shouldCreateHints) {
-          const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
-        }
-        currentLine += 1; // Apply { line
-
-        output += '\n  fun: ';
-        const funcStartLine = currentLine;
-        currentLine += 1; // fun: line - this is where the nested term starts
-        const funcPrefix = '  '.repeat(indentLevel + 1) + 'fun: ';
-        const funcResult = this.processTermWithLocations(term.function, funcStartLine, visited, indentLevel + 1, true, funcPrefix);
-        output += appendChild(funcResult.text, '\n  ');
-        currentLine = funcResult.endLine;
-        output += ',';
-
-        output += '\n  arg: ';
-        const argStartLine = currentLine;
-        currentLine += 1; // arg: line - this is where the nested term starts
-        const argPrefix = '  '.repeat(indentLevel + 1) + 'arg: ';
-        const argResult = this.processTermWithLocations(term.argument, argStartLine, visited, indentLevel + 1, true, argPrefix);
-        output += appendChild(argResult.text, '\n  ');
-        currentLine = argResult.endLine;
-        output += '\n}';
-        currentLine += 1; // closing } line
-        break;
-      }
-
-      case 'Delay': {
-        output = `${this.getShortTermType(term.term_type)} {`;
-        if (shouldCreateHints) {
-          const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
-        }
-        currentLine += 1; // Account for the header line
-
-        output += '\n  term: ';
-        const delayStartLine = currentLine;
-        currentLine += 1; // term: line - this is where the nested term starts
-        const delayPrefix = '  '.repeat(indentLevel + 1) + 'term: ';
-        const delayTermResult = this.processTermWithLocations(term.term, delayStartLine, visited, indentLevel + 1, true, delayPrefix);
-        output += appendChild(delayTermResult.text, '\n  ');
-        currentLine = delayTermResult.endLine;
-        output += '\n}';
-        currentLine += 1; // closing } line
-        break;
-      }
-
-      case 'Lambda': {
-        output = `${this.getShortTermType(term.term_type)} ${term.parameterName} {`;
-        if (shouldCreateHints) {
-          const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
-        }
-        currentLine += 1; // Lambda line
-
-        output += '\n  body: ';
-        const bodyStartLine = currentLine;
-        currentLine += 1; // body: line - this is where the nested term starts
-        const bodyPrefix = '  '.repeat(indentLevel + 1) + 'body: ';
-        const bodyResult = this.processTermWithLocations(term.body, bodyStartLine, visited, indentLevel + 1, true, bodyPrefix);
-        output += appendChild(bodyResult.text, '\n  ');
-        currentLine = bodyResult.endLine;
-        output += '\n}';
-        currentLine += 1; // closing } line
-        break;
-      }
-
-      case 'Force': {
-        output = `${this.getShortTermType(term.term_type)} {`;
-        if (shouldCreateHints) {
-          const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
-        }
-        currentLine += 1; // Account for the header line
-
-        output += '\n  term: ';
-        const forceStartLine = currentLine;
-        currentLine += 1; // term: line - this is where the nested term starts
-        const forcePrefix = '  '.repeat(indentLevel + 1) + 'term: ';
-        const forceTermResult = this.processTermWithLocations(term.term, forceStartLine, visited, indentLevel + 1, true, forcePrefix);
-        output += appendChild(forceTermResult.text, '\n  ');
-        currentLine = forceTermResult.endLine;
-        output += '\n}';
-        currentLine += 1; // closing } line
-        break;
-      }
-
-      case 'Constant': {
-        // Parse the constant data to extract type and value
-        const constantData = this.parseConstantData(term.constant);
-
-        if (this.shouldUseInlineFormat(constantData.type)) {
-          // Use inline format for simple types
-          output = `${this.getShortTermType(term.term_type)} ${constantData.type}: ${this.formatConstantValue(constantData.value)}`;
-          if (shouldCreateHints) {
-            const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-            this.createConstantHints(currentLine, term.term_type, term.id, prefixLength);
+        case 'constant':
+          this.constant(task, tasks);
+          break;
+        case 'term': {
+          const { term, column, lead, base } = task;
+          const first = spaces(column) + lead;
+          if (open.has(term.id)) {
+            this.lines.push(`${first}[Circular reference to term ${term.id}]`);
+            break;
           }
-          currentLine += 1;
-        } else {
-          // Use multiline format for complex types (Data, Bls12_381 types, etc.)
-          if (constantData.type === 'ProtoList' || constantData.type === 'ProtoArray' || constantData.type === 'ProtoPair') {
-            // Use structured rendering for ProtoList, ProtoArray and ProtoPair
-            const firstLineOutput = `${this.getShortTermType(term.term_type)} ${constantData.type} {`;
-            if (shouldCreateHints) {
-              const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-              this.createConstantHints(currentLine, term.term_type, term.id, prefixLength);
+
+          const startLine = this.lines.length;
+          const loc: TermLocation = {
+            startLine,
+            endLine: startLine + 1, // EXCLUSIVE; moved past the term's last line when it has several
+            termId: term.id,
+            kind: term.term_type,
+            label: termLabel(term),
+          };
+          this.locations.push(loc);
+          // Where the term's own text starts: hints are placed from there.
+          const prefixLength = Math.min(column, MAX_INDENT) + lead.length;
+          const child = (term: Term, lead: string): Task => ({ k: 'term', term, column: base + 2, lead, base: base + 2 });
+          const item = (term: Term): Task => ({ k: 'term', term, column: base + 4, lead: '', base: base + 4 });
+          // Tasks come off the stack last pushed first: `push` takes them in the order they print.
+          const push = (...inOrder: Task[]) => {
+            open.set(term.id, (open.get(term.id) ?? 0) + 1);
+            tasks.push({ k: 'leave', id: term.id }, { k: 'end', loc });
+            for (let i = inOrder.length - 1; i >= 0; i--) tasks.push(inOrder[i]);
+          };
+          const separated = (items: Task[]): Task[] => items.flatMap((t, i) => (i < items.length - 1 ? [t, { k: 'comma' } as Task] : [t]));
+
+          switch (term.term_type) {
+            case 'Var':
+              this.lines.push(`${first}${this.getShortTermType(term.term_type)} ${term.name}`);
+              this.createTermHints(startLine, term.term_type, term.id, prefixLength);
+              break;
+            case 'Error':
+              this.lines.push(`${first}${this.getShortTermType(term.term_type)}`);
+              this.createTermHints(startLine, term.term_type, term.id, prefixLength);
+              break;
+            case 'Builtin':
+              this.lines.push(`${first}${this.getShortTermType(term.term_type)} ${term.fun}`);
+              this.createBuiltinHints(startLine, term.term_type, term.id, prefixLength);
+              break;
+            case 'Apply':
+              this.lines.push(`${first}${this.getShortTermType(term.term_type)} {`);
+              this.createTermHints(startLine, term.term_type, term.id, prefixLength);
+              push(child(term.function, 'fun: '), { k: 'comma' }, child(term.argument, 'arg: '), line(base, '}'));
+              break;
+            case 'Delay':
+            case 'Force':
+              this.lines.push(`${first}${this.getShortTermType(term.term_type)} {`);
+              this.createTermHints(startLine, term.term_type, term.id, prefixLength);
+              push(child(term.term, 'term: '), line(base, '}'));
+              break;
+            case 'Lambda':
+              this.lines.push(`${first}${this.getShortTermType(term.term_type)} ${term.parameterName} {`);
+              this.createTermHints(startLine, term.term_type, term.id, prefixLength);
+              push(child(term.body, 'body: '), line(base, '}'));
+              break;
+            case 'Constr':
+              this.lines.push(`${first}${this.getShortTermType(term.term_type)} {`);
+              this.createTermHints(startLine, term.term_type, term.id, prefixLength);
+              this.lines.push(`${spaces(base + 2)}tag: ${term.constructorTag},`, `${spaces(base + 2)}fields: [`);
+              push(...separated(term.fields.map(item)), line(base + 2, ']'), line(base, '}'));
+              break;
+            case 'Case':
+              this.lines.push(`${first}${this.getShortTermType(term.term_type)} {`);
+              this.createTermHints(startLine, term.term_type, term.id, prefixLength);
+              push(
+                child(term.constr, 'constr: '),
+                { k: 'comma' },
+                line(base + 2, 'branches: ['),
+                ...separated(term.branches.map(item)),
+                line(base + 2, ']'),
+                line(base, '}'),
+              );
+              break;
+            case 'Constant': {
+              const constantData = this.parseConstantData(term.constant);
+              this.createConstantHints(startLine, term.term_type, term.id, prefixLength);
+              if (this.shouldUseInlineFormat(constantData.type)) {
+                // Inline format for simple types
+                this.lines.push(`${first}${this.getShortTermType(term.term_type)} ${constantData.type}: ${this.formatConstantValue(constantData.value)}`);
+              } else {
+                tasks.push({ k: 'end', loc });
+                this.constant({ k: 'constant', constant: term.constant, column, lead, base, top: true }, tasks);
+              }
+              break;
             }
-
-            const structuredResult = this.renderStructuredType(constantData.type, constantData.value, currentLine, indentLevel, false);
-            output = structuredResult.text;
-            currentLine = structuredResult.endLine;
-          } else {
-            // Use standard JSON format for other complex types
-            const firstLineOutput = `${this.getShortTermType(term.term_type)} ${constantData.type} {`;
-            if (shouldCreateHints) {
-              const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-              this.createConstantHints(currentLine, term.term_type, term.id, prefixLength);
+            default: {
+              // Exhaustive check - all types should be handled above
+              const _exhaustiveCheck: never = term;
+              throw new Error(`Unhandled term type: ${JSON.stringify(_exhaustiveCheck)}`);
             }
-
-            // Use the parsed value from constantData, which already has type removed
-            const constantJson = JSON.stringify(constantData.value, null, 2);
-
-            // Remove outer braces if the JSON is an object
-            const jsonLines = constantJson.split('\n');
-            let contentLines: string[];
-            if (jsonLines.length > 2 && jsonLines[0] === '{' && jsonLines[jsonLines.length - 1] === '}') {
-              // Remove first and last lines (outer braces) and reduce indentation
-              contentLines = jsonLines.slice(1, -1).map((line) => (line.startsWith('  ') ? line.slice(2) : line));
-            } else {
-              // Keep as is for non-objects
-              contentLines = jsonLines;
-            }
-
-            // Include the type in the header: Const <type> <name> {
-            output = [firstLineOutput, contentLines.map((line) => `  ${line}`).join('\n'), '}'].join('\n');
-            // Calculate number of lines (header + content + closing brace)
-            currentLine += 1 + contentLines.length + 1;
           }
+          break;
         }
-        break;
-      }
-
-      case 'Error':
-        output = `${this.getShortTermType(term.term_type)}`;
-        if (shouldCreateHints) {
-          const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
-        }
-        currentLine += 1;
-        break;
-
-      case 'Builtin':
-        output = `${this.getShortTermType(term.term_type)} ${term.fun}`;
-        if (shouldCreateHints) {
-          const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createBuiltinHints(currentLine, term.term_type, term.id, prefixLength);
-        }
-        currentLine += 1;
-        break;
-
-      case 'Constr': {
-        output = `${this.getShortTermType(term.term_type)} {`;
-        if (shouldCreateHints) {
-          const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
-        }
-        const constrHeader = [output, `  tag: ${term.constructorTag},`, '  fields: ['].join('\n');
-        output = constrHeader;
-        currentLine += 3; // header is 3 lines: "Constr {", "tag:", "fields: ["
-
-        for (let i = 0; i < term.fields.length; i++) {
-          output += '\n    ';
-          const fieldStartLine = currentLine;
-          currentLine += 1; // field line - this is where the nested term starts
-          const fieldPrefix = '  '.repeat(indentLevel + 2);
-          const fieldResult = this.processTermWithLocations(term.fields[i], fieldStartLine, visited, indentLevel + 2, true, fieldPrefix);
-          output += appendChild(fieldResult.text, '\n    ');
-          currentLine = fieldResult.endLine;
-          if (i < term.fields.length - 1) {
-            output += ',';
-          }
-        }
-        output += '\n  ]';
-        currentLine += 1; // ] line
-        output += '\n}';
-        currentLine += 1;
-        break;
-      }
-
-      case 'Case': {
-        output = `${this.getShortTermType(term.term_type)} {`;
-        if (shouldCreateHints) {
-          const prefixLength = prefix === '' ? indentLevel * 2 : prefix.length;
-          this.createTermHints(currentLine, term.term_type, term.id, prefixLength);
-        }
-        currentLine += 1; // Account for the header line
-
-        output += '\n  constr: ';
-        const constrStartLine = currentLine;
-        currentLine += 1; // constr: line - this is where the nested term starts
-        const constrPrefix = '  '.repeat(indentLevel + 1) + 'constr: ';
-        const constrResult = this.processTermWithLocations(term.constr, constrStartLine, visited, indentLevel + 1, true, constrPrefix);
-        output += appendChild(constrResult.text, '\n  ');
-        currentLine = constrResult.endLine;
-        output += ',';
-
-        output += '\n  branches: [';
-        currentLine += 1; // branches: [ line
-        for (let i = 0; i < term.branches.length; i++) {
-          output += '\n    ';
-          const branchStartLine = currentLine;
-          currentLine += 1; // branch line - this is where the nested term starts
-          const branchPrefix = '  '.repeat(indentLevel + 2);
-          const branchResult = this.processTermWithLocations(term.branches[i], branchStartLine, visited, indentLevel + 2, true, branchPrefix);
-          output += appendChild(branchResult.text, '\n    ');
-          currentLine = branchResult.endLine;
-          if (i < term.branches.length - 1) {
-            output += ',';
-          }
-        }
-        output += '\n  ]';
-        currentLine += 1;
-        output += '\n}';
-        currentLine += 1; // closing } line
-        break;
-      }
-
-      default: {
-        // Exhaustive check - all types should be handled above
-        const _exhaustiveCheck: never = term;
-        throw new Error(`Unhandled term type: ${JSON.stringify(_exhaustiveCheck)}`);
       }
     }
-
-    // Update endLine for termLocation
-    termLocations[termLocationIndex].endLine = currentLine;
-
-    // Remove from visited set to allow same term to be processed in different branches
-    visited.delete(term.id);
-
-    return {
-      text: output,
-      endLine: currentLine,
-    };
   }
+
+  /**
+   * A constant that takes several lines, its first one `lead` at `column`: a list, an array or a
+   * pair laid out field by field (its elements in turn), anything else as the JSON of its value.
+   * `top` for the constant of a `Constant` term, whose first line says so (`Const ProtoList {`).
+   */
+  private constant(task: Extract<Task, { k: 'constant' }>, tasks: Task[]): void {
+    const { constant, column, lead, base, top } = task;
+    const first = spaces(column) + lead;
+    const { type, value } = this.parseConstantData(constant);
+    const line = (column: number, text: string): Task => ({ k: 'line', column, text });
+    // An element: inline when its type is a simple one, a constant of its own otherwise.
+    const element = (elementType: string, element: Constant, column: number, lead: string, base: number): Task =>
+      this.shouldUseInlineFormat(elementType)
+        ? line(column, lead + this.formatConstantValue(this.parseConstantData(element).value))
+        : { k: 'constant', constant: element, column, lead, base, top: false };
+    const inOrder = (...items: Task[]) => {
+      for (let i = items.length - 1; i >= 0; i--) tasks.push(items[i]);
+    };
+    const header = `${top ? `${this.getShortTermType('Constant')} ` : ''}${type} {`;
+
+    if (type === 'ProtoList' || type === 'ProtoArray') {
+      // ProtoList (and ProtoArray) structure: elementType + values array
+      const list = value as ProtoListData;
+      const elementType = this.formatType(list.elementType);
+      this.lines.push(first + header);
+      const values = (list.values ?? []).map((v) => element(elementType, v, base + 4, '', base + 4));
+      inOrder(
+        line(base + 2, `elementType: ${elementType},`),
+        line(base + 2, 'values: ['),
+        ...values.flatMap((t, i) => (i < values.length - 1 ? [t, { k: 'comma' } as Task] : [t])),
+        line(base + 2, ']'),
+        line(base, '}'),
+      );
+    } else if (type === 'ProtoPair') {
+      // ProtoPair structure: first_type + second_type + first_element + second_element
+      const pair = value as ProtoPairData;
+      const firstType = this.formatType(pair.first_type);
+      const secondType = this.formatType(pair.second_type);
+      this.lines.push(first + header);
+      inOrder(
+        line(base + 2, `first_type: ${firstType},`),
+        line(base + 2, `second_type: ${secondType},`),
+        element(firstType, pair.first_element, base + 2, 'first_element: ', base + 2),
+        { k: 'comma' },
+        element(secondType, pair.second_element, base + 2, 'second_element: ', base + 2),
+        line(base, '}'),
+      );
+    } else {
+      // Anything else (Data, BLS, Value) as the JSON of its value: an object's fields inside the
+      // constant's own braces, any other value's lines as they come.
+      const json = jsonLines(value);
+      const object = json.length > 2 && json[0].text === '{' && json[json.length - 1].text === '}';
+      if (object) {
+        this.lines.push(first + header);
+        for (const l of json.slice(1, -1)) this.lines.push(spaces(base + l.indent) + l.text);
+        this.lines.push(spaces(base) + '}');
+      } else if (top) {
+        this.lines.push(first + header);
+        for (const l of json) this.lines.push(spaces(base + 2 + l.indent) + l.text);
+        this.lines.push(spaces(base) + '}');
+      } else {
+        this.lines.push(`${first}${type} ${json[0].text}`);
+        for (const l of json.slice(1)) this.lines.push(spaces(base + l.indent) + l.text);
+      }
+    }
+  }
+
 }

@@ -66,6 +66,9 @@ export type {
 } from './term-viewer/serialize';
 // Canonical UPLC pretty-printer (the alternate `uplc`-crate-style editor rendering).
 export { serializeTermUplc } from './term-viewer/uplc-pretty';
+// How far both renderings indent, and JSON text for values that nest too deep for JSON.stringify.
+export { MAX_INDENT } from './term-viewer/indent';
+export { prettyJson, compactJson } from './term-viewer/json-text';
 // Structural index over a rendering's locations: parents/children/depth, the nodes on a line and
 // the line of a term id. The only interpreter of `TermLocation` ranges (it normalises `endLine`,
 // which the two renderers store differently).
