@@ -11,7 +11,7 @@ use uplc::{
     ast::{NamedDeBruijn, Program, Term},
     machine::{
         cost_model::{CostModel, ExBudget},
-        MachineState,
+        Machine, MachineState,
     },
     manual_machine::ManualMachine,
     tx::script_context::ScriptContext,
@@ -92,12 +92,18 @@ impl SessionController {
             });
         let program_version = program.version;
         let entry_term = Box::new(program.term);
-        let machine = Box::new(ManualMachine::new_with_protocol(
-            language.clone(),
-            protocol_major_version,
-            cost_model.clone(),
-            upper_bound_budget.clone(),
-            DEFAULT_SLIPPAGE,
+        // The machine knows the program's version too, so it refuses whatever the ledger refuses to
+        // deserialise: a version, a `constr` or `case`, a type or a field count the script's
+        // language and protocol version do not allow.
+        let machine = Box::new(ManualMachine::from_machine(
+            Machine::new_with_protocol(
+                language.clone(),
+                protocol_major_version,
+                cost_model.clone(),
+                upper_bound_budget.clone(),
+                DEFAULT_SLIPPAGE,
+            )
+            .with_program_version(program_version),
             (*entry_term).clone(),
         )
         .map_err(|e| {
@@ -303,6 +309,7 @@ impl SessionController {
             self.language.clone(),
             self.cost_model.clone(),
             self.protocol_major_version,
+            self.program_version,
             &self.entry_term,
             &self.term_ids,
             ProfileAttribution::ApplySite,
@@ -367,12 +374,15 @@ impl SessionController {
         self.version += 1;
         
         // Create a new machine with the original entry term and initial budget
-        let new_machine = ManualMachine::new_with_protocol(
-            self.language.clone(),
-            self.protocol_major_version,
-            self.cost_model.clone(),
-            self.image_budget.clone(),
-            DEFAULT_SLIPPAGE,
+        let new_machine = ManualMachine::from_machine(
+            Machine::new_with_protocol(
+                self.language.clone(),
+                self.protocol_major_version,
+                self.cost_model.clone(),
+                self.image_budget.clone(),
+                DEFAULT_SLIPPAGE,
+            )
+            .with_program_version(self.program_version),
             (*self.entry_term).clone(),
         )
         .map_err(|e| {

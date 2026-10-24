@@ -51,7 +51,7 @@ fn an_empty_asset_name_is_the_empty_name() {
 }
 
 /// A transaction that creates a UTxO at a Byron address is refused, as the ledger refuses to show one
-/// to a Plutus script, where building the script's context used to crash on it.
+/// to a Plutus script.
 #[test]
 fn a_byron_output_is_refused() {
     use pallas_addresses::byron::{AddrType, AddressPayload, SpendingData};
@@ -71,7 +71,7 @@ fn a_byron_output_is_refused() {
     }
     let tx_hex = hex::encode(tx.encode_fragment().unwrap());
     let error = DebuggerEngine::new(&tx_hex, UTXO_JSON, PROTOCOL_PARAMS, "mainnet").expect_err("refused").to_string();
-    assert!(error.contains("Byron UTxO being created or spent: output 1"), "{error}");
+    assert!(error.contains("output #1") && error.contains("(ByronTxOutInContext)"), "{error}");
 }
 
 /// Preprod's Shelley era began at slot 86 400, on 2022-06-21, and its epochs last 432 000 slots.
@@ -668,6 +668,7 @@ fn runner_for(term: &Term<NamedDeBruijn>, attribution: ProfileAttribution) -> Pr
         Language::PlutusV2,
         CostModel::default(),
         VAN_ROSSEM_PROTOCOL_VERSION,
+        (1, 1, 0),
         term,
         &ids,
         attribution,
@@ -1205,6 +1206,27 @@ fn text_reads_back_and_its_nesting_skips_strings_and_comments() {
         "[".repeat(2_000)
     );
     assert!(new_session_from_program(&quoted, "V3").is_ok());
+}
+
+/// A session refuses what the ledger refuses to deserialise: a program version, or a `constr`, that
+/// the script's language and protocol version do not allow.
+#[test]
+fn a_session_refuses_what_the_ledger_cannot_deserialise() {
+    let parts = |script: &str, language: &str, protocol: u16| {
+        new_session_from_parts(
+            &serde_json::json!({ "script": script, "language": language, "protocol_version": protocol }).to_string(),
+        )
+    };
+    // Plutus V1 and V2 take only 1.0.0 programs before protocol version 11, 1.1.0 ones from it.
+    assert!(parts("(program 1.0.0 (con unit ()))", "v2", 10).is_ok());
+    let error = parts("(program 1.1.0 (con unit ()))", "v2", 10).expect_err("refused").to_string();
+    assert!(error.contains("ProgramVersionNotAvailable(1, 1, 0)"), "{error}");
+    assert!(parts("(program 1.1.0 (con unit ()))", "v2", 11).is_ok());
+    let error = parts("(program 0.0.0 (con unit ()))", "v2", 11).expect_err("refused").to_string();
+    assert!(error.contains("ProgramVersionNotAvailable(0, 0, 0)"), "{error}");
+    // `constr` and `case` need a 1.1.0 program.
+    let error = parts("(program 1.0.0 (constr 0))", "v3", 11).expect_err("refused").to_string();
+    assert!(error.contains("ConstrCaseNotAvailable"), "{error}");
 }
 
 /// Arrays (CIP-138) step under the current protocol, and an array shows in every view as a list

@@ -119,11 +119,6 @@ impl DebuggerEngine {
         let redeemers = tx.transaction_witness_set.redeemer.as_ref().ok_or(
             DebuggerError::TransactionParseError("No redeemers in transaction".to_string()),
         )?;
-
-        // The ledger shows no Plutus script a UTxO at a Byron address, created or spent: it refuses
-        // the transaction (ByronTxOutInContext) rather than build the script's context. The context
-        // builders below take a Byron output for one they can encode, and cannot.
-        refuse_byron_utxos(&tx, &resolved_inputs)?;
         let mut redeemers_map = HashMap::new();
         let mut redeemer_scripts = HashMap::new();
 
@@ -371,47 +366,6 @@ impl DebuggerEngine {
     }
 }
 
-/// Refuse a transaction that creates or spends a UTxO at a Byron address, as the ledger does when it
-/// would show one to a Plutus script ("Byron UTxO being created or spent").
-fn refuse_byron_utxos(tx: &MintedTx, resolved_inputs: &[ResolvedInput]) -> Result<(), DebuggerError> {
-    use pallas_addresses::Address;
-    use pallas_primitives::conway::PseudoTransactionOutput;
-
-    let is_byron = |address: &[u8]| matches!(Address::from_bytes(address), Ok(Address::Byron(_)));
-    let refuse = |what: String| {
-        DebuggerError::ScriptContextBuildError(format!(
-            "Byron UTxO being created or spent: {what} is at a Byron address, which the ledger shows no Plutus script"
-        ))
-    };
-
-    for (index, output) in tx.transaction_body.outputs.iter().enumerate() {
-        let address = match output {
-            PseudoTransactionOutput::Legacy(output) => output.address.as_ref(),
-            PseudoTransactionOutput::PostAlonzo(output) => output.address.as_ref(),
-        };
-        if is_byron(address) {
-            return Err(refuse(format!("output {index}")));
-        }
-    }
-
-    let spent = tx.transaction_body.inputs.iter();
-    let referenced = tx.transaction_body.reference_inputs.iter().flat_map(|inputs| inputs.iter());
-    for input in spent.chain(referenced) {
-        let Some(resolved) = resolved_inputs.iter().find(|resolved| resolved.input == *input) else {
-            continue;
-        };
-        let address = match &resolved.output {
-            PseudoTransactionOutput::Legacy(output) => output.address.as_ref(),
-            PseudoTransactionOutput::PostAlonzo(output) => output.address.as_ref(),
-        };
-        if is_byron(address) {
-            return Err(refuse(format!("input {}#{}", hex::encode(input.transaction_id), input.index)));
-        }
-    }
-
-    Ok(())
-}
-
 fn compute_script_hash(script: &PlutusScript) -> String {
     let (language, bytes) = match script {
         PlutusScript::V1(script) => (Language::PlutusV1, &script.0),
@@ -490,7 +444,7 @@ fn parse_program_any(src: &str) -> Result<(Program<NamedDeBruijn>, Option<Vec<u8
 
 /// How deep UPLC text may nest. The text parser descends once per level of brackets, some 700
 /// bytes of the module's 1 MiB WebAssembly stack a level: under Node's default stack, as in a
-/// browser, it opens 1 400 levels of terms and runs out of stack at 1 424, and running out in the
+/// browser, it opens 1 326 levels of terms and runs out of stack at 1 350, and running out in the
 /// middle of a parse can leave the module unusable. Text deeper than this is refused before it is
 /// parsed.
 pub(crate) const MAX_TEXT_NESTING: usize = 1_000;

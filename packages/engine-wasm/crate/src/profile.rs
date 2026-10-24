@@ -10,7 +10,7 @@ use uplc::{
     machine::{
         cost_model::{CostModel, ExBudget, StepKind},
         value::Value,
-        Context, MachineState, BUILTIN_COUNT, TERM_COUNT,
+        Context, Machine, MachineState, BUILTIN_COUNT, TERM_COUNT,
     },
     manual_machine::ManualMachine,
 };
@@ -334,6 +334,7 @@ impl ProfileRunner {
         language: Language,
         cost_model: CostModel,
         protocol_major_version: u16,
+        program_version: (usize, usize, usize),
         entry_term: &Term<NamedDeBruijn>,
         term_ids: &HashSet<i32>,
         attribution: ProfileAttribution,
@@ -341,12 +342,15 @@ impl ProfileRunner {
         let startup = cost_model.machine_costs.get(StepKind::StartUp);
         let image_budget = ExBudget::max();
         let machine = Box::new(
-            ManualMachine::new_debug_with_protocol(
-                language.clone(),
-                protocol_major_version,
-                cost_model,
-                image_budget,
-                PROFILE_SLIPPAGE,
+            ManualMachine::from_machine(
+                Machine::new_debug_with_protocol(
+                    language.clone(),
+                    protocol_major_version,
+                    cost_model,
+                    image_budget,
+                    PROFILE_SLIPPAGE,
+                )
+                .with_program_version(program_version),
                 entry_term.clone(),
             )
             .map_err(|e| {
