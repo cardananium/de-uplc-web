@@ -724,56 +724,38 @@ impl ProfileRunner {
     }
 
     /// Post-order: a node's subtree cost is its own self plus the subtree cost of its AST children,
-    /// so `children + self == subtree` holds exactly at every node.
-    fn walk_subtree(&self, term: &Term<NamedDeBruijn>, out: &mut Vec<(i64, i64)>) -> (i64, i64) {
-        let slot = self.slot(term.uniq_id());
-        let (mut cpu, mut mem) = match slot {
-            Some(i) => (self.terms[i].self_cpu, self.terms[i].self_mem),
-            None => (0, 0),
-        };
+    /// so `children + self == subtree` holds exactly at every node. The walk keeps the nodes still
+    /// to finish on an explicit stack: a program can nest as deep as its size allows.
+    fn walk_subtree(&self, entry_term: &Term<NamedDeBruijn>, out: &mut [(i64, i64)]) {
+        let mut pending = vec![(entry_term, false)];
+        let mut totals: Vec<(i64, i64)> = Vec::new();
+        let mut children = Vec::new();
 
-        match term {
-            Term::Delay { body, .. } | Term::Lambda { body, .. } | Term::Force { body, .. } => {
-                let (c, m) = self.walk_subtree(body, out);
-                cpu += c;
-                mem += m;
-            }
-            Term::Apply {
-                function, argument, ..
-            } => {
-                let (c, m) = self.walk_subtree(function, out);
-                cpu += c;
-                mem += m;
-                let (c, m) = self.walk_subtree(argument, out);
-                cpu += c;
-                mem += m;
-            }
-            Term::Constr { fields, .. } => {
-                for field in fields {
-                    let (c, m) = self.walk_subtree(field, out);
-                    cpu += c;
-                    mem += m;
-                }
-            }
-            Term::Case {
-                constr, branches, ..
-            } => {
-                let (c, m) = self.walk_subtree(constr, out);
-                cpu += c;
-                mem += m;
-                for branch in branches {
-                    let (c, m) = self.walk_subtree(branch, out);
-                    cpu += c;
-                    mem += m;
-                }
-            }
-            Term::Var { .. } | Term::Constant { .. } | Term::Error { .. } | Term::Builtin { .. } => {}
-        }
+        while let Some((term, expanded)) = pending.pop() {
+            children.clear();
+            push_children(term, &mut children);
 
-        if let Some(i) = slot {
-            out[i] = (cpu, mem);
+            if !expanded {
+                pending.push((term, true));
+                pending.extend(children.iter().rev().map(|child| (*child, false)));
+                continue;
+            }
+
+            let slot = self.slot(term.uniq_id());
+            let (mut cpu, mut mem) = match slot {
+                Some(i) => (self.terms[i].self_cpu, self.terms[i].self_mem),
+                None => (0, 0),
+            };
+            for (c, m) in totals.drain(totals.len() - children.len()..) {
+                cpu += c;
+                mem += m;
+            }
+
+            if let Some(i) = slot {
+                out[i] = (cpu, mem);
+            }
+            totals.push((cpu, mem));
         }
-        (cpu, mem)
     }
 
     fn push_sample(&mut self) {
@@ -793,6 +775,23 @@ impl ProfileRunner {
             });
             self.timeline_interval *= 2;
         }
+    }
+}
+
+/// The AST children of `term`, in order.
+fn push_children<'t>(term: &'t Term<NamedDeBruijn>, children: &mut Vec<&'t Term<NamedDeBruijn>>) {
+    match term {
+        Term::Delay { body, .. } | Term::Lambda { body, .. } | Term::Force { body, .. } => children.push(body),
+        Term::Apply { function, argument, .. } => {
+            children.push(function);
+            children.push(argument);
+        }
+        Term::Constr { fields, .. } => children.extend(fields.iter()),
+        Term::Case { constr, branches, .. } => {
+            children.push(constr);
+            children.extend(branches.iter());
+        }
+        Term::Var { .. } | Term::Constant { .. } | Term::Error { .. } | Term::Builtin { .. } => {}
     }
 }
 

@@ -4,7 +4,8 @@ use crate::budget::SerializableBudget;
 use crate::debugger_engine::{DebuggerError, lazy_session_api::LazySessionApi};
 use crate::profile::{ProfileAttribution, ProfileRunner};
 use crate::wasm_tools::JsError;
-use crate::{SerializableEnv, SerializableExecutionStatus, SerializableMachineContext, SerializableMachineState, SerializableScriptContext, SerializableTerm};
+use crate::views::{self, Root};
+use crate::SerializableScriptContext;
 use pallas_primitives::conway::Language;
 use uplc::{
     ast::{NamedDeBruijn, Program, Term},
@@ -207,18 +208,8 @@ impl SessionController {
     }
 
     pub fn get_machine_context(&self) -> Result<String, JsError> {
-        let contexts = self.get_machine_context_inner()?;
-        Ok(serde_json::to_string(&contexts)
-            .map_err(|e| DebuggerError::MachineError(e.to_string()))?)
-    }
-
-    pub(crate) fn get_machine_context_inner(&self) -> Result<Vec<SerializableMachineContext>, JsError> {
-        let contexts = self.machine.collect_nested_contexts();
-        let serializable_contexts: Vec<_> = contexts
-            .into_iter()
-            .map(|ctx| SerializableMachineContext::from_uplc_context_with_ids(&ctx, &self.term_ids))
-            .collect();
-        Ok(serializable_contexts)
+        let frames = views::frames(self.machine.current_state());
+        Ok(views::plain(Root::Frames(frames), &self.term_ids))
     }
 
     pub fn get_logs(&self) -> Result<String, JsError> {
@@ -237,15 +228,7 @@ impl SessionController {
     }
 
     pub fn get_machine_state(&self) -> Result<String, JsError> {
-        let state = self.get_machine_state_inner()?;
-        Ok(serde_json::to_string(&state)
-            .map_err(|e| DebuggerError::MachineError(e.to_string()))?)
-    }
-
-    pub(crate) fn get_machine_state_inner(&self) -> Result<SerializableMachineState, JsError> {
-        let state = self.machine.current_state();
-        let serializable_state = SerializableMachineState::from_uplc_machine_state_with_ids(state, &self.term_ids);
-        Ok(serializable_state)
+        Ok(views::plain(Root::State(self.machine.current_state()), &self.term_ids))
     }
 
     pub fn get_budget(&self) -> Result<String, JsError> {
@@ -272,15 +255,7 @@ impl SessionController {
     }
 
     pub fn get_script(&self) -> Result<String, JsError> {
-        let script = self.get_script_inner()?;
-        Ok(script.to_json()
-            .map_err(|e| DebuggerError::MachineError(e.to_string()))?)
-    }
-
-    pub(crate) fn get_script_inner(&self) -> Result<SerializableTerm, JsError> {
-        let term = self.entry_term.as_ref();
-        let serializable_term = SerializableTerm::from_uplc_term(term);
-        Ok(serializable_term)
+        Ok(views::plain(Root::Term(&self.entry_term), &self.term_ids))
     }
 
     pub fn get_current_term_id(&self) -> Result<i32, JsError> {
@@ -298,44 +273,22 @@ impl SessionController {
         }
     }
 
-    pub(crate) fn get_current_env_inner(&self) -> Result<SerializableEnv, JsError> {
-        match self.machine.current_state() {
-            MachineState::Compute(_, env, _) => {
-                let serializable_env: SerializableEnv = SerializableEnv::from_uplc_env_with_ids(env, &self.term_ids);
-                Ok(serializable_env)
-            }
-            _ => Ok(SerializableEnv {
-                values: vec![],
-            }),
-        }
-    }
-
     pub fn get_redeemer(&self) -> Result<String, JsError> {
         Ok(self.redeemer.clone())
     }
 
     pub fn get_current_env(&self) -> Result<String, JsError> {
-        let env = self.get_current_env_inner()?;
-        Ok(serde_json::to_string(&env)
-            .map_err(|e| DebuggerError::MachineError(e.to_string()))?)
-    }
-
-    fn step_inner(&mut self) -> Result<super::StepResult, JsError> {
-        let term_id = self.get_current_term_id()?;
-        self.version += 1;
-        let status: &uplc::manual_machine::ExecutionStatus = self.machine.step();
-        let serializable_status: SerializableExecutionStatus = status.into();
-        
-        Ok(super::StepResult {
-            term_id,
-            status: serializable_status,
-        })
+        match self.machine.current_state() {
+            MachineState::Compute(_, env, _) => Ok(views::plain(Root::Env(env), &self.term_ids)),
+            _ => Ok(r#"{"values":[]}"#.to_string()),
+        }
     }
 
     pub fn step(&mut self) -> Result<String, JsError> {
-        let result = self.step_inner()?;
-        Ok(serde_json::to_string(&result)
-            .map_err(|e| DebuggerError::MachineError(e.to_string()))?)
+        let term_id = self.get_current_term_id()?;
+        self.version += 1;
+        let status = self.machine.step();
+        Ok(super::step_json(term_id, status))
     }
 
     /// Creates (or restarts) the profile runner: a SECOND machine over the same entry term, cost
@@ -502,55 +455,24 @@ fn purpose_name(context: &ScriptContext) -> &'static str {
     }
 }
 
+/// The ids of every term of the program. A program nests as deep as its size allows, so the walk
+/// keeps the terms still to visit on a stack of its own.
 fn collect_term_ids(term: &Term<NamedDeBruijn>, term_ids: &mut HashSet<i32>) {
-    // First, collect the current term's ID
-    let uniq_id = match term {
-        Term::Var { uniq_id, .. }
-        | Term::Delay { uniq_id, .. }
-        | Term::Lambda { uniq_id, .. }
-        | Term::Apply { uniq_id, .. }
-        | Term::Constant { uniq_id, .. }
-        | Term::Force { uniq_id, .. }
-        | Term::Error { uniq_id, .. }
-        | Term::Builtin { uniq_id, .. }
-        | Term::Constr { uniq_id, .. }
-        | Term::Case { uniq_id, .. } => *uniq_id as i32,
-    };
-    
-    term_ids.insert(uniq_id);
-    
-    // Then recursively collect IDs from nested terms
-    match term {
-        Term::Delay { body, .. } => {
-            collect_term_ids(body, term_ids);
-        }
-        Term::Lambda { body, .. } => {
-            collect_term_ids(body, term_ids);
-        }
-        Term::Apply { function, argument, .. } => {
-            collect_term_ids(function, term_ids);
-            collect_term_ids(argument, term_ids);
-        }
-        Term::Force { body, .. } => {
-            collect_term_ids(body, term_ids);
-        }
-        Term::Constr { fields, .. } => {
-            for field in fields {
-                collect_term_ids(field, term_ids);
+    let mut pending = vec![term];
+    while let Some(term) = pending.pop() {
+        term_ids.insert(term.uniq_id() as i32);
+        match term {
+            Term::Delay { body, .. } | Term::Lambda { body, .. } | Term::Force { body, .. } => pending.push(body),
+            Term::Apply { function, argument, .. } => {
+                pending.push(argument);
+                pending.push(function);
             }
-        }
-        Term::Case { constr, branches, .. } => {
-            collect_term_ids(constr, term_ids);
-            for branch in branches {
-                collect_term_ids(branch, term_ids);
+            Term::Constr { fields, .. } => pending.extend(fields.iter().rev()),
+            Term::Case { constr, branches, .. } => {
+                pending.extend(branches.iter().rev());
+                pending.push(constr);
             }
-        }
-        // These variants don't contain nested terms
-        Term::Var { .. }
-        | Term::Constant { .. }
-        | Term::Error { .. }
-        | Term::Builtin { .. } => {
-            // No nested terms to process
+            Term::Var { .. } | Term::Constant { .. } | Term::Error { .. } | Term::Builtin { .. } => {}
         }
     }
 }

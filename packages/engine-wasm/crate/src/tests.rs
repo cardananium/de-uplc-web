@@ -733,54 +733,37 @@ fn run_to_end_logs(session: &mut SessionController) -> String {
     session.get_logs().unwrap()
 }
 
-fn every_variant_term() -> crate::serializer::SerializableTerm {
-    use crate::serializer::{SerializableConstant, SerializableTerm};
-    SerializableTerm::Case {
-        id: 1,
-        constr: Box::new(SerializableTerm::Constr {
-            id: 2,
-            constructor_tag: 7,
-            fields: vec![
-                SerializableTerm::Var { id: 3, name: "x\"quoted\\".to_string() },
-                SerializableTerm::Error { id: 4 },
-                SerializableTerm::Builtin { id: 5, fun: "AddInteger".to_string() },
-            ],
-        }),
-        branches: vec![
-            SerializableTerm::Apply {
-                id: 6,
-                function: Box::new(SerializableTerm::Lambda {
-                    id: 7,
-                    parameter_name: "i_0".to_string(),
-                    body: Box::new(SerializableTerm::Delay {
-                        id: 8,
-                        term: Box::new(SerializableTerm::Force {
-                            id: 9,
-                            term: Box::new(SerializableTerm::Constant {
-                                id: 10,
-                                constant: SerializableConstant::Integer { value: "42".to_string() },
-                            }),
-                        }),
-                    }),
-                }),
-                argument: Box::new(SerializableTerm::Constant {
-                    id: 11,
-                    constant: SerializableConstant::Unit,
-                }),
-            },
-            SerializableTerm::Constr { id: 12, constructor_tag: 0, fields: vec![] },
-        ],
+/// What the views write is what the `Serializable*` types — the schemas the UI's types come from —
+/// declare: read back through the derived serde types, it is written again unchanged.
+#[test]
+fn the_eager_views_are_what_the_schema_types_declare() {
+    use crate::{SerializableEnv, SerializableMachineContext, SerializableMachineState, SerializableTerm, StepResult};
+
+    fn round_trip<T: serde::Serialize + serde::de::DeserializeOwned>(json: &str) {
+        let back: T = serde_json::from_str(json).unwrap_or_else(|e| panic!("{e}: {json}"));
+        assert_eq!(serde_json::to_string(&back).unwrap(), json);
+    }
+
+    let src = r#"(program 1.1.0 [(lam x (case (constr 1 x (con integer 7)) (lam a (error))
+        (lam a (lam b [(lam f [f (con (list (pair integer bool)) [(1, True)])]) [(builtin addInteger) b]]))))
+        (con string "q\"uoted")])"#;
+    let mut session = new_session_from_program(src, "V2").unwrap();
+    round_trip::<SerializableTerm>(&session.get_script().unwrap());
+    loop {
+        round_trip::<SerializableMachineState>(&session.get_machine_state().unwrap());
+        round_trip::<SerializableEnv>(&session.get_current_env().unwrap());
+        round_trip::<Vec<SerializableMachineContext>>(&session.get_machine_context().unwrap());
+        let step = session.step().unwrap();
+        round_trip::<StepResult>(&step);
+        if !step.contains(r#""status_type":"Ready""#) {
+            break;
+        }
     }
 }
 
 #[test]
-fn serialize_to_json_matches_serde() {
-    let term = every_variant_term();
-    assert_eq!(term.to_json().unwrap(), serde_json::to_string(&term).unwrap());
-}
-
-#[test]
-fn deep_term_builds_serializes_and_drops_without_overflow() {
+fn a_deep_term_is_written_without_overflow() {
+    use crate::views::{plain, Root};
     use std::rc::Rc;
     use uplc::ast::Term;
 
@@ -791,13 +774,114 @@ fn deep_term_builds_serializes_and_drops_without_overflow() {
         term = Term::Delay { body: Rc::new(term), uniq_id: i as isize };
     }
 
-    let serializable = crate::serializer::SerializableTerm::from_uplc_term(&term);
-    let json = serializable.to_json().unwrap();
+    let json = plain(Root::Term(&term), &HashSet::new());
 
     assert_eq!(json.matches(r#""term_type":"Delay""#).count(), DEPTH);
     assert_eq!(json.matches(r#""term_type":"Error""#).count(), 1);
+    assert!(json.contains(r#"{"term_type":"Error","id":0}"#));
+}
 
-    drop(serializable);
+/// How deep the deep values go: well past the 34 816 levels a 17 KB script nests at 4 bits a level.
+const DEEP: usize = 60_000;
+
+/// Runs `check` on a thread whose stack holds a few dozen frames of view writing, not one per level
+/// of a deep script: 256 KiB, or 2 MiB unoptimised — less than 40 bytes for each of `DEEP` levels.
+fn on_a_small_stack(check: impl FnOnce() + Send + 'static) {
+    let size = if cfg!(debug_assertions) { 2 << 20 } else { 256 << 10 };
+    std::thread::Builder::new().stack_size(size).spawn(check).unwrap().join().unwrap();
+}
+
+/// Every view of values, environments, frames, terms, constants and types `DEEP` levels deep — eager,
+/// lazy in both modes, and the nodes the lazy ones hand out — is written with a stack that does not
+/// grow with the depth. The machine builds such values as it runs a deep script; here they are
+/// built by hand, so that the views alone are on trial.
+#[test]
+fn deep_values_are_viewed_without_a_frame_per_level() {
+    on_a_small_stack(|| {
+        use crate::views::{self, Detail, Root, Writer};
+        use std::rc::Rc;
+        use uplc::{
+            ast::{Constant, DeBruijn, Type},
+            machine::{value::Value, Context, MachineState},
+        };
+        use pallas_primitives::{alonzo::{Constr, MaybeIndefArray}, PlutusData};
+
+        let valid = |what: &str, json: String| {
+            assert!(serde_json::value::RawValue::from_string(json).is_ok(), "{what} is not JSON");
+        };
+        let name = |text: &str| Rc::new(NamedDeBruijn { text: text.to_string(), index: DeBruijn::new(1) });
+        let program: HashSet<i32> = HashSet::from([1]);
+
+        // A closure whose environment holds a closure whose environment holds …, the way
+        // `(lam p (lam _ p))` applied to itself leaves them; and a constructor value nested in itself.
+        let body = Rc::new(Term::Var { name: name("p"), uniq_id: 1 });
+        let mut closure = Value::Con(Rc::new(Constant::Unit));
+        let mut constr = Value::Con(Rc::new(Constant::Unit));
+        for i in 0..DEEP {
+            closure = Value::Lambda { parameter_name: name("_"), body: body.clone(), env: Rc::new(vec![closure]), term_id: i as isize };
+            constr = Value::Constr { tag: 0, fields: vec![constr], term_id: i as isize };
+        }
+
+        // A frame per level: arguments awaiting their functions.
+        let mut context = Context::NoFrame;
+        for _ in 0..DEEP {
+            context = Context::FrameAwaitArg(Value::Con(Rc::new(Constant::Unit)), Box::new(context));
+        }
+
+        // Constants and types nested in themselves. Their drop recurses (in the machine's crates),
+        // so they are left to the end of the process.
+        let mut typ = Type::Integer;
+        let mut data = PlutusData::BigInt(pallas_primitives::BigInt::Int(0.into()));
+        for _ in 0..DEEP {
+            typ = Type::List(Rc::new(typ));
+            data = PlutusData::Constr(Constr { tag: 121, any_constructor: None, fields: MaybeIndefArray::Indef(vec![data]) });
+        }
+        let list = Rc::new(Constant::ProtoList(typ, vec![]));
+        let data = Rc::new(Constant::Data(data));
+
+        let states = [
+            ("closure", MachineState::Return(Context::NoFrame, closure)),
+            ("constr", MachineState::Return(Context::NoFrame, constr)),
+            ("frames", MachineState::Return(context, Value::Con(Rc::new(Constant::Unit)))),
+            ("list type", MachineState::Return(Context::NoFrame, Value::Con(list.clone()))),
+            ("data", MachineState::Return(Context::NoFrame, Value::Con(data.clone()))),
+        ];
+        for (what, state) in &states {
+            valid(what, views::plain(Root::State(state), &program));
+            valid(what, views::plain(Root::Frames(views::frames(state)), &program));
+            for detail in [Detail::Shallow, Detail::Full] {
+                valid(what, Writer::new(&program, &[]).write(Root::State(state), detail));
+                valid(what, Writer::new(&program, &[]).write(Root::Frames(views::frames(state)), detail));
+                if let MachineState::Return(_, value) = state {
+                    for path in [&["env", "values", "0"][..], &["fields", "0"], &["constant"]] {
+                        let path: Vec<_> = path.iter().map(|s| crate::lazy_loading::PathSegment::Field(s.to_string())).collect();
+                        let path: Vec<_> = path
+                            .into_iter()
+                            .map(|segment| match segment {
+                                crate::lazy_loading::PathSegment::Field(s) if s == "0" => crate::lazy_loading::PathSegment::Index(0),
+                                other => other,
+                            })
+                            .collect();
+                        if let crate::lazy_loading::NavigationResult::Found(json) = views::value_at(value, &path, &program, &[], detail) {
+                            valid(what, json);
+                        }
+                    }
+                }
+            }
+        }
+
+        // A term with a constant of each kind inside it, written as a step's result is.
+        let term = Term::Apply {
+            function: Rc::new(Term::Constant { value: list, uniq_id: 2 }),
+            argument: Rc::new(Term::Constant { value: data, uniq_id: 3 }),
+            uniq_id: 4,
+        };
+        valid("term", views::plain(Root::Term(&term), &program));
+        valid("term", Writer::new(&program, &[]).write(Root::Term(&term), Detail::Shallow));
+
+        std::mem::forget(states);
+        std::mem::forget(term);
+    });
 }
 
 fn run_to_end(session: &mut SessionController) -> String {

@@ -27,40 +27,23 @@ pub struct StepResult {
     pub status: SerializableExecutionStatus,
 }
 
-impl From<uplc::manual_machine::ExecutionStatus> for SerializableExecutionStatus {
-    fn from(status: uplc::manual_machine::ExecutionStatus) -> Self {
-        match status {
-            uplc::manual_machine::ExecutionStatus::Ready => SerializableExecutionStatus::Ready,
-            uplc::manual_machine::ExecutionStatus::Done(term) => {
-                SerializableExecutionStatus::Done {
-                    result: crate::serializer::SerializableTerm::from_uplc_term(&term),
-                }
-            }
-            uplc::manual_machine::ExecutionStatus::Error(error) => {
-                SerializableExecutionStatus::Error {
-                    message: error.to_string(),
-                }
-            }
-        }
-    }
-}
+/// A step, as `StepResult` declares it: the term just computed, and where the run stands — its
+/// result written in full.
+pub(crate) fn step_json(term_id: i32, status: &uplc::manual_machine::ExecutionStatus) -> String {
+    use uplc::manual_machine::ExecutionStatus;
 
-impl From<&uplc::manual_machine::ExecutionStatus> for SerializableExecutionStatus {
-    fn from(status: &uplc::manual_machine::ExecutionStatus) -> Self {
-        match status {
-            uplc::manual_machine::ExecutionStatus::Ready => SerializableExecutionStatus::Ready,
-            uplc::manual_machine::ExecutionStatus::Done(term) => {
-                SerializableExecutionStatus::Done {
-                    result: crate::serializer::SerializableTerm::from_uplc_term(term),
-                }
-            }
-            uplc::manual_machine::ExecutionStatus::Error(error) => {
-                SerializableExecutionStatus::Error {
-                    message: error.to_string(),
-                }
-            }
-        }
-    }
+    let status = match status {
+        ExecutionStatus::Ready => r#"{"status_type":"Ready"}"#.to_string(),
+        ExecutionStatus::Done(term) => format!(
+            r#"{{"status_type":"Done","result":{}}}"#,
+            crate::views::plain(crate::views::Root::Term(term), &std::collections::HashSet::new())
+        ),
+        ExecutionStatus::Error(error) => format!(
+            r#"{{"status_type":"Error","message":{}}}"#,
+            serde_json::to_string(&error.to_string()).unwrap_or_else(|_| "\"\"".to_string())
+        ),
+    };
+    format!(r#"{{"term_id":{term_id},"status":{status}}}"#)
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

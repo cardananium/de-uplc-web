@@ -12,6 +12,7 @@ pub mod profile;
 pub mod wasm_tools;
 pub mod tx_utils;
 pub mod lazy_loading;
+pub mod views;
 
 #[cfg(test)]
 mod tests;
