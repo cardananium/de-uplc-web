@@ -27,20 +27,54 @@ pub struct StepResult {
     pub status: SerializableExecutionStatus,
 }
 
+/// Why a Plutus V3 run that ends on anything but unit fails (CIP-117), in the words cquisitor's
+/// validator uses, so that the stepper and the validator agree.
+pub const NOT_UNIT: &str = "The script evaluated to a term other than unit, which PlutusV3 requires";
+
+/// Where a run stands, its failure in the debugger's words.
+pub(crate) enum RunStatus<'a> {
+    Ready,
+    Done(&'a uplc::ast::Term<uplc::ast::NamedDeBruijn>),
+    /// The machine failed, or a Plutus V3 run ended on something other than unit.
+    Error(String),
+}
+
+impl<'a> RunStatus<'a> {
+    pub(crate) fn of(status: &'a uplc::manual_machine::ExecutionStatus, language: &pallas_primitives::conway::Language) -> Self {
+        use pallas_primitives::conway::Language;
+        use uplc::{
+            ast::{Constant, Term},
+            manual_machine::ExecutionStatus,
+        };
+
+        match status {
+            ExecutionStatus::Ready => RunStatus::Ready,
+            // As the ledger has it: a V3 script succeeds only by returning unit. The machine is done
+            // all the same, so the value it ended on stays there to look at.
+            ExecutionStatus::Done(term)
+                if *language == Language::PlutusV3
+                    && !matches!(term, Term::Constant { value, .. } if matches!(value.as_ref(), Constant::Unit)) =>
+            {
+                RunStatus::Error(NOT_UNIT.to_string())
+            }
+            ExecutionStatus::Done(term) => RunStatus::Done(term),
+            ExecutionStatus::Error(error) => RunStatus::Error(error.to_string()),
+        }
+    }
+}
+
 /// A step, as `StepResult` declares it: the term just computed, and where the run stands — its
 /// result written in full.
-pub(crate) fn step_json(term_id: i32, status: &uplc::manual_machine::ExecutionStatus) -> String {
-    use uplc::manual_machine::ExecutionStatus;
-
+pub(crate) fn step_json(term_id: i32, status: RunStatus<'_>) -> String {
     let status = match status {
-        ExecutionStatus::Ready => r#"{"status_type":"Ready"}"#.to_string(),
-        ExecutionStatus::Done(term) => format!(
+        RunStatus::Ready => r#"{"status_type":"Ready"}"#.to_string(),
+        RunStatus::Done(term) => format!(
             r#"{{"status_type":"Done","result":{}}}"#,
             crate::views::plain(crate::views::Root::Term(term), &std::collections::HashSet::new())
         ),
-        ExecutionStatus::Error(error) => format!(
+        RunStatus::Error(message) => format!(
             r#"{{"status_type":"Error","message":{}}}"#,
-            serde_json::to_string(&error.to_string()).unwrap_or_else(|_| "\"\"".to_string())
+            serde_json::to_string(&message).unwrap_or_else(|_| "\"\"".to_string())
         ),
     };
     format!(r#"{{"term_id":{term_id},"status":{status}}}"#)

@@ -12,10 +12,10 @@ use uplc::{
         value::Value,
         Context, MachineState, BUILTIN_COUNT, TERM_COUNT,
     },
-    manual_machine::{ExecutionStatus, ManualMachine},
+    manual_machine::ManualMachine,
 };
 
-use crate::debugger_engine::DebuggerError;
+use crate::debugger_engine::{DebuggerError, RunStatus};
 use crate::wasm_tools::JsError;
 
 /// The profile run drives its OWN machine one CEK step at a time, so slippage MUST be 1: with a
@@ -292,6 +292,8 @@ enum FrameOp {
 #[derive(Clone, Debug)]
 pub struct ProfileRunner {
     machine: Box<ManualMachine>,
+    /// The language the program runs as: a Plutus V3 run that ends on anything but unit fails.
+    language: Language,
     /// Which attribution rule charges the Return steps of this run. Chosen once, at `new()`, and reported in
     /// `totals.attribution` — the UI reads it to decide whether the `≈` marker means anything.
     attribution: ProfileAttribution,
@@ -340,7 +342,7 @@ impl ProfileRunner {
         let image_budget = ExBudget::max();
         let machine = Box::new(
             ManualMachine::new_debug_with_protocol(
-                language,
+                language.clone(),
                 protocol_major_version,
                 cost_model,
                 image_budget,
@@ -360,6 +362,7 @@ impl ProfileRunner {
 
         Ok(ProfileRunner {
             machine,
+            language,
             attribution,
             apply_stack: Vec::new(),
             image_budget,
@@ -520,10 +523,10 @@ impl ProfileRunner {
 
         let spent = self.spent();
         ProfileRunResult {
-            outcome: match self.machine.status() {
-                ExecutionStatus::Ready => ProfileRunOutcome::Running,
-                ExecutionStatus::Done(_) => ProfileRunOutcome::Done,
-                ExecutionStatus::Error(_) => ProfileRunOutcome::Error,
+            outcome: match RunStatus::of(self.machine.status(), &self.language) {
+                RunStatus::Ready => ProfileRunOutcome::Running,
+                RunStatus::Done(_) => ProfileRunOutcome::Done,
+                RunStatus::Error(_) => ProfileRunOutcome::Error,
             },
             steps: self.steps,
             cpu: spent.cpu,
@@ -673,16 +676,17 @@ impl ProfileRunner {
     }
 
     fn outcome(&self) -> ProfileOutcome {
-        match self.machine.status() {
-            ExecutionStatus::Ready => ProfileOutcome::Running,
-            ExecutionStatus::Done(_) => ProfileOutcome::Done,
-            ExecutionStatus::Error(error) => ProfileOutcome::Error {
-                message: error.to_string(),
+        match RunStatus::of(self.machine.status(), &self.language) {
+            RunStatus::Ready => ProfileOutcome::Running,
+            RunStatus::Done(_) => ProfileOutcome::Done,
+            RunStatus::Error(message) => ProfileOutcome::Error {
+                message,
                 // On failure the machine parks the id of the term that failed in the Done state, so
-                // the report can point at the node the script died on.
+                // the report can point at the node the script died on; a V3 result that is not unit
+                // is put on the last node it computed, where the run finished.
                 term_id: match self.machine.current_state() {
                     MachineState::Done(Term::Error { uniq_id }) => *uniq_id as i32,
-                    _ => -1,
+                    _ => self.machine.last_term_id() as i32,
                 },
             },
         }

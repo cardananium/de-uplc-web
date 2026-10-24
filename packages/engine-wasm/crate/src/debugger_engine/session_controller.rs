@@ -288,7 +288,7 @@ impl SessionController {
         let term_id = self.get_current_term_id()?;
         self.version += 1;
         let status = self.machine.step();
-        Ok(super::step_json(term_id, status))
+        Ok(super::step_json(term_id, super::RunStatus::of(status, &self.language)))
     }
 
     /// Creates (or restarts) the profile runner: a SECOND machine over the same entry term, cost

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::DebuggerEngine;
 use crate::budget::SerializableBudget;
-use crate::debugger_engine::{new_session_from_parts, new_session_from_program, SessionController};
+use crate::debugger_engine::{new_session_from_parts, new_session_from_program, SessionController, NOT_UNIT};
 use crate::profile::{
     ProfileAttribution, ProfileOutcome, ProfileRunOutcome, ProfileRunResult, ProfileRunner,
     ProfileTerm, SerializableProfile,
@@ -901,7 +901,8 @@ fn value_builtins_step_under_van_rossem() {
     let src = "(program 1.1.0 [(builtin insertCoin) (con bytestring #aa) (con bytestring #bb) \
                (con integer 7) (con value [(#aa, [(#cc, 5)])])])";
     let mut session = new_session_from_program(src, "v3").unwrap();
-    assert_eq!(run_to_end(&mut session), "Done");
+    // A V3 run may not end on a value (CIP-117); the value it ended on is still there to read.
+    assert_eq!(run_to_end(&mut session), "Error");
 
     let state = session.get_machine_state().unwrap();
     assert!(state.contains(r#""type":"Value""#), "{state}");
@@ -911,6 +912,67 @@ fn value_builtins_step_under_van_rossem() {
 
     let lazy = session.get_machine_state_lazy(String::new(), true).unwrap();
     assert!(lazy.contains(r#""name":"bb","quantity":"7""#), "{lazy}");
+}
+
+// ── CIP-117: a Plutus V3 run succeeds only by ending on unit ───────────────────────
+
+/// Steps a session to its end and returns the last step's status.
+fn last_status(session: &mut SessionController) -> serde_json::Value {
+    loop {
+        let result: serde_json::Value = serde_json::from_str(&session.step().unwrap()).unwrap();
+        if result["status"]["status_type"] != "Ready" {
+            return result["status"].clone();
+        }
+    }
+}
+
+/// A V3 run that ends on anything but unit fails, as the ledger has it, with the words cquisitor's
+/// validator uses — in the step status, the profile run and the profile report alike. The machine
+/// is done all the same, and the value it ended on stays there to look at.
+#[test]
+fn a_v3_run_that_ends_on_anything_but_unit_fails() {
+    let src = "(program 1.1.0 [ (lam x [ (builtin addInteger) x (con integer 1) ]) (con integer 41) ])";
+    let mut session = new_session_from_program(src, "V3").unwrap();
+    let status = last_status(&mut session);
+    assert_eq!(status["status_type"], "Error");
+    assert_eq!(status["message"], NOT_UNIT);
+
+    let state: serde_json::Value = serde_json::from_str(&session.get_machine_state().unwrap()).unwrap();
+    assert_eq!(state["machine_state_type"], "Done");
+    assert_eq!(state["term"]["term"]["constant"]["value"], "42");
+    let lazy: serde_json::Value = serde_json::from_str(&session.get_machine_state_lazy("[]".into(), false).unwrap()).unwrap();
+    assert_eq!(lazy["term"]["term"]["constant"]["value"], "42");
+    // The failure is put on the last term computed: where the run finished.
+    let script: serde_json::Value = serde_json::from_str(&session.get_script().unwrap()).unwrap();
+    let last = session.get_current_term_id().unwrap();
+    assert_ne!(last, -1);
+    assert!(last <= script["id"].as_i64().unwrap() as i32);
+
+    session.profile_start().unwrap();
+    let chunk: ProfileRunResult = serde_json::from_str(&session.profile_run(u32::MAX).unwrap()).unwrap();
+    assert_eq!(chunk.outcome, ProfileRunOutcome::Error);
+    let profile: SerializableProfile = serde_json::from_str(&session.profile_report().unwrap()).unwrap();
+    match profile.totals.outcome {
+        ProfileOutcome::Error { message, term_id } => {
+            assert_eq!(message, NOT_UNIT);
+            assert_eq!(term_id, last);
+        }
+        other => panic!("expected the CIP-117 failure, got {other:?}"),
+    }
+}
+
+/// Ending on unit is how a V3 run succeeds; V1 and V2 runs may end on anything.
+#[test]
+fn unit_ends_a_v3_run_and_v1_v2_runs_end_on_anything() {
+    let unit = "(program 1.1.0 [ (lam x (con unit ())) (con integer 41) ])";
+    assert_eq!(last_status(&mut new_session_from_program(unit, "V3").unwrap())["status_type"], "Done");
+
+    let integer = "(program 1.0.0 [ (lam x [ (builtin addInteger) x (con integer 1) ]) (con integer 41) ])";
+    for language in ["V1", "V2"] {
+        let status = last_status(&mut new_session_from_program(integer, language).unwrap());
+        assert_eq!(status["status_type"], "Done", "{language}");
+        assert_eq!(status["result"]["constant"]["value"], "42", "{language}");
+    }
 }
 
 /// UPLC text deeper than the text parser can take is refused before it is parsed, with what to do
@@ -1009,7 +1071,7 @@ fn array_constant_refused_before_van_rossem() {
 fn value_constant_refused_before_van_rossem() {
     let config = |protocol: u16| {
         serde_json::json!({
-            "script": "(program 1.1.0 (con value [(#aa, [(#cc, 5)])]))",
+            "script": "(program 1.1.0 [(lam v (con unit ())) (con value [(#aa, [(#cc, 5)])])])",
             "language": "v3",
             "protocol_version": protocol,
         })
