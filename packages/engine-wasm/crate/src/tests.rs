@@ -879,8 +879,7 @@ fn deep_values_are_viewed_without_a_frame_per_level() {
             context = Context::FrameAwaitArg(Value::Con(Rc::new(Constant::Unit)), Box::new(context));
         }
 
-        // Constants and types nested in themselves. Their drop recurses (in the machine's crates),
-        // so they are left to the end of the process.
+        // Constants and types nested in themselves.
         let mut typ = Type::Integer;
         let mut data = PlutusData::BigInt(pallas_primitives::BigInt::Int(0.into()));
         for _ in 0..DEEP {
@@ -929,9 +928,154 @@ fn deep_values_are_viewed_without_a_frame_per_level() {
         };
         valid("term", views::plain(Root::Term(&term), &program));
         valid("term", Writer::new(&program, &[]).write(Root::Term(&term), Detail::Shallow));
+    });
+}
 
-        std::mem::forget(states);
-        std::mem::forget(term);
+/// A program nested `depth` levels deep in each way a script can nest, as the hex of its CBOR, with
+/// the protocol version it is opened at.
+fn deep_programs(depth: usize) -> Vec<(&'static str, String, u16)> {
+    use pallas_primitives::{alonzo::{Constr, MaybeIndefArray}, BigInt, PlutusData};
+    use std::rc::Rc;
+    use uplc::ast::{Constant, DeBruijn, Program, Term, Type};
+
+    let hex_of = |term: Term<DeBruijn>| Program { version: (1, 1, 0), term }.to_hex().unwrap();
+    // Protocol version 11 caps a constant's type at 32 tags; before it, types nested freely. A
+    // list's element type is repeated at every level of its items, so a list of lists (or a pair
+    // of pairs) is written in space quadratic in its depth: those nest a thousand levels.
+    let nested = depth.min(1_000);
+    let var = |index: usize| Term::Var { name: Rc::new(DeBruijn::new(index)), uniq_id: 0 };
+    let lambda = |body: Term<DeBruijn>| Term::Lambda { parameter_name: Rc::new(DeBruijn::new(0)), body: Rc::new(body), uniq_id: 0 };
+    let apply = |function: &Rc<Term<DeBruijn>>, argument: Term<DeBruijn>| Term::Apply {
+        function: function.clone(),
+        argument: Rc::new(argument),
+        uniq_id: 0,
+    };
+    let constant = |value: Constant| Term::Constant { value: Rc::new(value), uniq_id: 0 };
+    let unit = || constant(Constant::Unit);
+    let mut programs = Vec::new();
+
+    // A frame per level on the way down: forces of delays.
+    let mut term = unit();
+    for _ in 0..depth {
+        term = Term::Delay { body: Rc::new(term), uniq_id: 0 };
+    }
+    for _ in 0..depth {
+        term = Term::Force { body: Rc::new(term), uniq_id: 0 };
+    }
+    programs.push(("force_delay", hex_of(term), 11));
+
+    // A frame per level on the way in: the identity applied to the identity applied to …
+    let identity = Rc::new(lambda(var(1)));
+    let mut term = unit();
+    for _ in 0..depth {
+        term = apply(&identity, term);
+    }
+    programs.push(("apply_spine", hex_of(term), 11));
+
+    // A closure whose environment holds a closure whose environment holds … : `(lam p (lam _ p))`
+    // applied to the last one, every level. Its result discharges into a term as deep.
+    let keep = Rc::new(lambda(lambda(var(2))));
+    let mut term = unit();
+    for _ in 0..depth {
+        term = apply(&keep, term);
+    }
+    programs.push(("closure_chain", hex_of(term), 11));
+
+    // The program is a lambda: it is done at once, on a term as deep as it.
+    let mut term = unit();
+    for _ in 0..depth {
+        term = lambda(term);
+    }
+    programs.push(("lambdas", hex_of(term), 11));
+
+    // A constructor value nested in itself.
+    let mut term = unit();
+    for _ in 0..depth {
+        term = Term::Constr { tag: 0, fields: vec![term], uniq_id: 0 };
+    }
+    programs.push(("constr_value", hex_of(term), 11));
+
+    // Constants: Data, a list type, a list of lists and a pair of pairs.
+    let mut data = PlutusData::BigInt(BigInt::Int(0.into()));
+    for _ in 0..depth {
+        data = PlutusData::Constr(Constr { tag: 121, any_constructor: None, fields: MaybeIndefArray::Indef(vec![data]) });
+    }
+    programs.push(("data", hex_of(constant(Constant::Data(data))), 11));
+
+    let mut typ = Type::Integer;
+    for _ in 0..depth {
+        typ = Type::List(Rc::new(typ));
+    }
+    programs.push(("list_type", hex_of(constant(Constant::ProtoList(typ, vec![]))), 10));
+
+    let mut typ = Type::Integer;
+    let mut list = Constant::Integer(1.into());
+    for _ in 0..nested {
+        list = Constant::ProtoList(typ.clone(), vec![Rc::new(list)]);
+        typ = Type::List(Rc::new(typ));
+    }
+    programs.push(("list_constant", hex_of(constant(list)), 10));
+
+    let mut typ = Type::Unit;
+    let mut pair = Constant::Unit;
+    for _ in 0..nested {
+        pair = Constant::ProtoPair(typ.clone(), Type::Unit, Rc::new(pair), Rc::new(Constant::Unit));
+        typ = Type::Pair(Rc::new(typ), Rc::new(Type::Unit));
+    }
+    programs.push(("pair_constant", hex_of(constant(pair)), 10));
+
+    programs
+}
+
+/// Every view of a deep script — the program, each step's status, the eager views, the lazy ones
+/// in both modes and the placeholders they hand out, the profile — is written with a stack that
+/// does not grow with the depth, and so is everything the machine does to run it.
+#[test]
+fn deep_scripts_are_viewed_without_a_frame_per_level() {
+    on_a_small_stack(|| {
+        let valid = |what: &str, json: String| {
+            assert!(serde_json::value::RawValue::from_string(json).is_ok(), "{what} is not JSON");
+        };
+        for (name, hex, protocol_version) in deep_programs(DEEP) {
+            let config = serde_json::json!({ "script": hex, "language": "V3", "protocol_version": protocol_version });
+            let mut session = new_session_from_parts(&config.to_string()).unwrap_or_else(|e| panic!("{name}: {e}"));
+            valid(name, session.get_script().unwrap());
+            let views = |session: &SessionController, at: &str| {
+                valid(at, session.get_machine_state().unwrap());
+                valid(at, session.get_current_env().unwrap());
+                valid(at, session.get_machine_context().unwrap());
+                for full in [false, true] {
+                    valid(at, session.get_machine_state_lazy("[]".into(), full).unwrap());
+                    valid(at, session.get_current_env_lazy("[]".into(), full).unwrap());
+                    valid(at, session.get_machine_context_lazy("[]".into(), full).unwrap());
+                }
+                for path in [r#"["value"]"#, r#"["term"]"#, r#"["value","fields","0"]"#, r#"["value","env","values","0"]"#] {
+                    for full in [false, true] {
+                        if let Ok(json) = session.get_machine_state_lazy(path.into(), full) {
+                            valid(at, json);
+                        }
+                    }
+                }
+            };
+            views(&session, name);
+            let mut steps = 0;
+            loop {
+                let step = session.step().unwrap();
+                steps += 1;
+                if steps == DEEP {
+                    views(&session, name);
+                }
+                if !step.contains(r#""status_type":"Ready""#) {
+                    valid(name, step);
+                    break;
+                }
+            }
+            views(&session, name);
+            session.profile_start().unwrap();
+            valid(name, session.profile_run(u32::MAX).unwrap());
+            valid(name, session.profile_report().unwrap());
+            session.reset().unwrap();
+        }
     });
 }
 
@@ -1041,15 +1185,15 @@ fn text_nested_past_what_the_parser_takes_is_refused() {
     assert!(new_session_from_program(&shallow, "V3").is_ok());
 }
 
-/// A builtin the text parser does not know is refused with its name, where the parser would panic;
-/// `verifySignature`, the name the Ed25519 builtin is printed with, reads back as that builtin; and
-/// what is inside a string or a comment counts for nothing.
+/// A builtin the text parser does not know is a parse error, not a crash; `verifySignature`, the name
+/// the Ed25519 builtin is printed with, reads back as that builtin; and the brackets inside a string
+/// or a comment do not count towards the nesting.
 #[test]
-fn text_builtins_are_checked_before_the_parser_sees_them() {
+fn text_reads_back_and_its_nesting_skips_strings_and_comments() {
     let error = new_session_from_program("(program 1.1.0 [(builtin addIntegr) (con integer 1)])", "V3")
         .expect_err("refused")
         .to_string();
-    assert!(error.contains("unknown builtin `addIntegr`"), "{error}");
+    assert!(error.contains("UPLC parse error") && error.contains("builtin function name"), "{error}");
 
     let legacy = "(program 1.0.0 [(builtin verifySignature) (con bytestring #00) (con bytestring #00) (con bytestring #00)])";
     let session = new_session_from_program(legacy, "V1").unwrap();

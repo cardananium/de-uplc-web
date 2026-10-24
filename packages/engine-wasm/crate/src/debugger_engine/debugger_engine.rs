@@ -3,12 +3,9 @@ use pallas_primitives::{
     conway::{Language, MintedTx, Redeemer},
     Fragment,
 };
-use std::borrow::Cow;
 use std::collections::HashMap;
-use std::str::FromStr;
 use uplc::{
     ast::{FakeNamedDeBruijn, NamedDeBruijn, Program},
-    builtins::DefaultFunction,
     machine::cost_model::{initialize_cost_model_with_protocol, CostModel, ExBudget},
     machine::runtime::VAN_ROSSEM_PROTOCOL_VERSION,
     tx::{
@@ -467,8 +464,15 @@ fn parse_program_any(src: &str) -> Result<(Program<NamedDeBruijn>, Option<Vec<u8
     }
     // Textual UPLC syntax starts with '(' — parse names then resolve to de Bruijn indices.
     if trimmed.starts_with('(') {
-        let text = check_text(trimmed)?;
-        let named = uplc::parser::program(&text)
+        let nesting = text_nesting(trimmed);
+        if nesting > MAX_TEXT_NESTING {
+            return Err(DebuggerError::ProgramBuildError(format!(
+                "UPLC text nests {nesting} levels deep, and the text parser takes {MAX_TEXT_NESTING} at most. \
+                 Load the script as flat (CBOR hex), which nests far deeper."
+            ))
+            .into());
+        }
+        let named = uplc::parser::program(trimmed)
             .map_err(|e| DebuggerError::ProgramBuildError(format!("UPLC parse error: {}", e)))?;
         let program = named
             .to_named_debruijn()
@@ -486,29 +490,15 @@ fn parse_program_any(src: &str) -> Result<(Program<NamedDeBruijn>, Option<Vec<u8
 
 /// How deep UPLC text may nest. The text parser descends once per level of brackets, some 700
 /// bytes of the module's 1 MiB WebAssembly stack a level: under Node's default stack, as in a
-/// browser, it opens 1 424 levels and runs out of stack at 1 448, and running out in the middle of
-/// a parse can leave the module unusable. Text deeper than this is refused before it is parsed.
+/// browser, it opens 1 400 levels of terms and runs out of stack at 1 424, and running out in the
+/// middle of a parse can leave the module unusable. Text deeper than this is refused before it is
+/// parsed.
 pub(crate) const MAX_TEXT_NESTING: usize = 1_000;
 
-/// What would bring the text parser down, caught before it runs: nesting deeper than
-/// `MAX_TEXT_NESTING`, or a builtin name it does not know, which it panics on. `verifySignature`,
-/// the legacy name of `verifyEd25519Signature` and the one it is printed with, reads as the latter.
-fn check_text(text: &str) -> Result<Cow<'_, str>, DebuggerError> {
+/// The deepest nesting of `(` and `[` in UPLC text, outside string literals and `--` comments.
+fn text_nesting(text: &str) -> usize {
     let bytes = text.as_bytes();
-    // Past whitespace and `--` comments, as the parser skips them between tokens.
-    let skip_space = |mut i: usize| loop {
-        match bytes.get(i) {
-            Some(b' ' | b'\n' | b'\r' | b'\t') => i += 1,
-            Some(b'-') if bytes.get(i + 1) == Some(&b'-') => {
-                while i < bytes.len() && bytes[i] != b'\n' {
-                    i += 1;
-                }
-            }
-            _ => return i,
-        }
-    };
     let (mut depth, mut deepest, mut i) = (0usize, 0usize, 0usize);
-    let mut aliases = Vec::new();
 
     while i < bytes.len() {
         match bytes[i] {
@@ -529,29 +519,6 @@ fn check_text(text: &str) -> Result<Cow<'_, str>, DebuggerError> {
             b'(' | b'[' => {
                 depth += 1;
                 deepest = deepest.max(depth);
-                // `(builtin <name>)`
-                let keyword = skip_space(i + 1);
-                if bytes[i] == b'(' && bytes[keyword..].starts_with(b"builtin") {
-                    let start = skip_space(keyword + "builtin".len());
-                    let end = start
-                        + bytes[start..]
-                            .iter()
-                            .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'\'' | b'~' | b'-'))
-                            .count();
-                    let name = &text[start..end];
-                    if start > keyword + "builtin".len()
-                        && end > start
-                        && bytes.get(skip_space(end)) == Some(&b')')
-                        && DefaultFunction::from_str(name).is_err()
-                    {
-                        if name != "verifySignature" {
-                            return Err(DebuggerError::ProgramBuildError(format!(
-                                "UPLC parse error: unknown builtin `{name}`"
-                            )));
-                        }
-                        aliases.push(start..end);
-                    }
-                }
             }
             b')' | b']' => depth = depth.saturating_sub(1),
             _ => {}
@@ -559,24 +526,7 @@ fn check_text(text: &str) -> Result<Cow<'_, str>, DebuggerError> {
         i += 1;
     }
 
-    if deepest > MAX_TEXT_NESTING {
-        return Err(DebuggerError::ProgramBuildError(format!(
-            "UPLC text nests {deepest} levels deep, and the text parser takes {MAX_TEXT_NESTING} at most. \
-             Load the script as flat (CBOR hex), which nests far deeper."
-        )));
-    }
-    if aliases.is_empty() {
-        return Ok(Cow::Borrowed(text));
-    }
-    let mut renamed = String::with_capacity(text.len() + aliases.len() * 8);
-    let mut copied = 0;
-    for alias in aliases {
-        renamed.push_str(&text[copied..alias.start]);
-        renamed.push_str("verifyEd25519Signature");
-        copied = alias.end;
-    }
-    renamed.push_str(&text[copied..]);
-    Ok(Cow::Owned(renamed))
+    deepest
 }
 
 /// Wrap raw flat bytes in a CBOR byte string — the missing layer that turns a raw-flat input into
