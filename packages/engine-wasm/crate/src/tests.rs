@@ -913,6 +913,43 @@ fn value_builtins_step_under_van_rossem() {
     assert!(lazy.contains(r#""name":"bb","quantity":"7""#), "{lazy}");
 }
 
+/// UPLC text deeper than the text parser can take is refused before it is parsed, with what to do
+/// instead.
+#[test]
+fn text_nested_past_what_the_parser_takes_is_refused() {
+    let delays = crate::debugger_engine::debugger_engine::MAX_TEXT_NESTING;
+    let text = format!("(program 1.1.0 {}(con unit ()){})", "(delay ".repeat(delays), ")".repeat(delays));
+    let error = new_session_from_program(&text, "V3").expect_err("refused").to_string();
+    // The program's own parentheses and the constant's count too.
+    assert!(error.contains(&format!("nests {} levels deep", delays + 3)), "{error}");
+    assert!(error.contains("flat (CBOR hex)"), "{error}");
+
+    let shallow = format!("(program 1.1.0 {}(con unit ()){})", "(delay ".repeat(100), ")".repeat(100));
+    assert!(new_session_from_program(&shallow, "V3").is_ok());
+}
+
+/// A builtin the text parser does not know is refused with its name, where the parser would panic;
+/// `verifySignature`, the name the Ed25519 builtin is printed with, reads back as that builtin; and
+/// what is inside a string or a comment counts for nothing.
+#[test]
+fn text_builtins_are_checked_before_the_parser_sees_them() {
+    let error = new_session_from_program("(program 1.1.0 [(builtin addIntegr) (con integer 1)])", "V3")
+        .expect_err("refused")
+        .to_string();
+    assert!(error.contains("unknown builtin `addIntegr`"), "{error}");
+
+    let legacy = "(program 1.0.0 [(builtin verifySignature) (con bytestring #00) (con bytestring #00) (con bytestring #00)])";
+    let session = new_session_from_program(legacy, "V1").unwrap();
+    assert!(session.get_script().unwrap().contains(r#""fun":"VerifyEd25519Signature""#));
+
+    let quoted = format!(
+        "(program 1.1.0 -- (builtin nope) {}\n [(lam x (con unit ())) (con string \"(builtin nope) {}\")])",
+        "(".repeat(2_000),
+        "[".repeat(2_000)
+    );
+    assert!(new_session_from_program(&quoted, "V3").is_ok());
+}
+
 /// Arrays (CIP-138) step under the current protocol, and an array shows in every view as a list
 /// does, under its own type: in the program, in the eager views, as a placeholder in a lazy one,
 /// and item by item by path.
