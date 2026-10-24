@@ -21,6 +21,16 @@ describe('serializeTermUplc — canonical UPLC rendering', () => {
     ]);
   });
 
+  it('names every builtin as UPLC text does', () => {
+    const name = (fun: string) => serializeTermUplc({ term_type: 'Builtin', id: 1, fun }).text;
+    expect(name('UnConstrData')).toBe('(builtin unConstrData)');
+    expect(name('Bls12_381_G1_Add')).toBe('(builtin bls12_381_G1_add)');
+    expect(name('Bls12_381_G1_MultiScalarMul')).toBe('(builtin bls12_381_G1_multiScalarMul)');
+    expect(name('Bls12_381_G2_MultiScalarMul')).toBe('(builtin bls12_381_G2_multiScalarMul)');
+    expect(name('LengthOfArray')).toBe('(builtin lengthOfArray)');
+    expect(name('IndexArray')).toBe('(builtin indexArray)');
+  });
+
   it('renders lambda, delay, force, error and bare vars', () => {
     const term: Term = {
       term_type: 'Lambda', id: 1, parameterName: 'x',
