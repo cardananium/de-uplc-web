@@ -150,15 +150,10 @@ impl TryFrom<UtxoOutput> for ResolvedInput {
             index: utxo.output_index as u64,
         };
 
-        // Parse address - using raw bytes directly
-        let address_bytes = if utxo.address.starts_with("addr") || utxo.address.starts_with("stake") {
-            Address::from_bech32(&utxo.address)
-                .map(|addr| addr.to_vec())
-                .map_err(|e| UtxoConversionError::InvalidAddress(format!("{}: {}", utxo.address, e)))?
-        } else {
-            hex::decode(&utxo.address)
-                .map_err(|e| UtxoConversionError::InvalidAddress(format!("{}: {}", utxo.address, e)))?
-        };
+        // Parse address: bech32, Byron base58, or the raw bytes in hex
+        let address_bytes = utxo.address.parse::<Address>()
+            .map(|addr| addr.to_vec())
+            .map_err(|e| UtxoConversionError::InvalidAddress(format!("{}: {}", utxo.address, e)))?;
 
         // Convert value with multi-assets support
         let lovelace = utxo.value.lovelace.parse::<u64>()
@@ -185,11 +180,8 @@ impl TryFrom<UtxoOutput> for ResolvedInput {
                 
                 let policy_id_bytes = hex::decode(policy_id_hex)
                     .map_err(|e| UtxoConversionError::InvalidPolicyId(format!("{}: {}", policy_id_hex, e)))?;
-                let asset_name_bytes = if !asset_name_hex.is_empty() {
-                    hex::decode(asset_name_hex)
-                } else {
-                    Ok(vec![0u8])
-                }
+                // An empty name (`policy.`) is the empty byte string, as the ledger has it.
+                let asset_name_bytes = hex::decode(asset_name_hex)
                     .map_err(|e| UtxoConversionError::InvalidAssetName(format!("{}: {}", asset_name_hex, e)))?;
                 
                 let policy_id_len = policy_id_bytes.len();

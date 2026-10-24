@@ -33,10 +33,14 @@ const SLOT_CONFIG_MAINNET: SlotConfig = SlotConfig {
     slot_length: 1000,        // 1 second per slot
 };
 
-const SLOT_CONFIG_PREPROD: SlotConfig = SlotConfig {
-    zero_time: 1654041600000 + 1728000000, // Shelley era start
-    zero_slot: 0,                          // Shelley era start slot
-    slot_length: 1000,                     // 1 second per slot
+// Preprod's Byron era was four epochs of 21 600 twenty-second slots: the Shelley era began at slot
+// 86 400, at 1655769600 s, and every slot since lasts a second. A slot's time is the line through
+// that point; written from slot 0, it starts 86 400 s earlier. (A Byron-era slot, which no
+// transaction of the Plutus eras is validated in, converts approximately rather than failing.)
+pub(crate) const SLOT_CONFIG_PREPROD: SlotConfig = SlotConfig {
+    zero_time: 1655769600000 - 86400 * 1000,
+    zero_slot: 0,
+    slot_length: 1000, // 1 second per slot
 };
 
 const SLOT_CONFIG_PREVIEW: SlotConfig = SlotConfig {
@@ -118,6 +122,11 @@ impl DebuggerEngine {
         let redeemers = tx.transaction_witness_set.redeemer.as_ref().ok_or(
             DebuggerError::TransactionParseError("No redeemers in transaction".to_string()),
         )?;
+
+        // The ledger shows no Plutus script a UTxO at a Byron address, created or spent: it refuses
+        // the transaction (ByronTxOutInContext) rather than build the script's context. The context
+        // builders below take a Byron output for one they can encode, and cannot.
+        refuse_byron_utxos(&tx, &resolved_inputs)?;
         let mut redeemers_map = HashMap::new();
         let mut redeemer_scripts = HashMap::new();
 
@@ -208,9 +217,12 @@ impl DebuggerEngine {
         Self::new_internal(tx_hex, utxos, protocol_params, network)
     }
 
-    /// Gets list of available redeemers in the transaction
+    /// Gets list of available redeemers in the transaction, in ledger order: by purpose (spend,
+    /// mint, cert, reward, vote, propose), then by index.
     pub fn get_redeemers(&self) -> Result<Vec<String>, JsError> {
-        Ok(self.redeemers.keys().cloned().collect())
+        let mut redeemers: Vec<(&Redeemer, &String)> = self.redeemers.iter().map(|(name, redeemer)| (redeemer, name)).collect();
+        redeemers.sort_by_key(|(redeemer, _)| (redeemer.tag, redeemer.index));
+        Ok(redeemers.into_iter().map(|(_, name)| name.clone()).collect())
     }
 
     /// Gets the transaction ID
@@ -360,6 +372,47 @@ impl DebuggerEngine {
         );
         Ok(cost_models)
     }
+}
+
+/// Refuse a transaction that creates or spends a UTxO at a Byron address, as the ledger does when it
+/// would show one to a Plutus script ("Byron UTxO being created or spent").
+fn refuse_byron_utxos(tx: &MintedTx, resolved_inputs: &[ResolvedInput]) -> Result<(), DebuggerError> {
+    use pallas_addresses::Address;
+    use pallas_primitives::conway::PseudoTransactionOutput;
+
+    let is_byron = |address: &[u8]| matches!(Address::from_bytes(address), Ok(Address::Byron(_)));
+    let refuse = |what: String| {
+        DebuggerError::ScriptContextBuildError(format!(
+            "Byron UTxO being created or spent: {what} is at a Byron address, which the ledger shows no Plutus script"
+        ))
+    };
+
+    for (index, output) in tx.transaction_body.outputs.iter().enumerate() {
+        let address = match output {
+            PseudoTransactionOutput::Legacy(output) => output.address.as_ref(),
+            PseudoTransactionOutput::PostAlonzo(output) => output.address.as_ref(),
+        };
+        if is_byron(address) {
+            return Err(refuse(format!("output {index}")));
+        }
+    }
+
+    let spent = tx.transaction_body.inputs.iter();
+    let referenced = tx.transaction_body.reference_inputs.iter().flat_map(|inputs| inputs.iter());
+    for input in spent.chain(referenced) {
+        let Some(resolved) = resolved_inputs.iter().find(|resolved| resolved.input == *input) else {
+            continue;
+        };
+        let address = match &resolved.output {
+            PseudoTransactionOutput::Legacy(output) => output.address.as_ref(),
+            PseudoTransactionOutput::PostAlonzo(output) => output.address.as_ref(),
+        };
+        if is_byron(address) {
+            return Err(refuse(format!("input {}#{}", hex::encode(input.transaction_id), input.index)));
+        }
+    }
+
+    Ok(())
 }
 
 fn compute_script_hash(script: &PlutusScript) -> String {

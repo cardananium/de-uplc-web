@@ -32,6 +32,57 @@ fn open_test() {
     let _script = session.get_script().unwrap();
 }
 
+#[test]
+fn redeemers_are_listed_in_ledger_order() {
+    let engine = DebuggerEngine::new(TX_HEX, UTXO_JSON, PROTOCOL_PARAMS, "mainnet").unwrap();
+    assert_eq!(engine.get_redeemers().unwrap(), vec!["Spend:2", "Mint:1"]);
+}
+
+/// An asset with an empty name in a UTxO has the empty name, not a zero byte, so the sample
+/// transaction's mint, which checks for those assets, succeeds as it did on chain.
+#[test]
+fn an_empty_asset_name_is_the_empty_name() {
+    let mut engine = DebuggerEngine::new(TX_HEX, UTXO_JSON, PROTOCOL_PARAMS, "mainnet").unwrap();
+    let mut session = engine.init_debug_session("Mint:1").unwrap();
+    let context = session.get_tx_script_context().unwrap();
+    assert!(context.contains(r#"{"asset_name":"","quantity":1}"#), "{context}");
+    assert!(!context.contains(r#""asset_name":"00""#), "{context}");
+    assert_eq!(run_to_end(&mut session), "Done");
+}
+
+/// A transaction that creates a UTxO at a Byron address is refused, as the ledger refuses to show one
+/// to a Plutus script, where building the script's context used to crash on it.
+#[test]
+fn a_byron_output_is_refused() {
+    use pallas_addresses::byron::{AddrType, AddressPayload, SpendingData};
+    use pallas_codec::minicbor::bytes::ByteVec;
+    use pallas_primitives::{conway::{PseudoTransactionOutput, Tx}, Fragment};
+
+    let byron = pallas_addresses::ByronAddress::from_decoded(AddressPayload::new(
+        AddrType::PubKey,
+        SpendingData::PubKey(ByteVec::from(vec![7u8; 64])),
+        vec![].into(),
+    ))
+    .to_vec();
+    let mut tx = Tx::decode_fragment(&hex::decode(TX_HEX).unwrap()).unwrap();
+    match &mut tx.transaction_body.outputs[1] {
+        PseudoTransactionOutput::PostAlonzo(output) => output.address = byron.into(),
+        PseudoTransactionOutput::Legacy(output) => output.address = byron.into(),
+    }
+    let tx_hex = hex::encode(tx.encode_fragment().unwrap());
+    let error = DebuggerEngine::new(&tx_hex, UTXO_JSON, PROTOCOL_PARAMS, "mainnet").expect_err("refused").to_string();
+    assert!(error.contains("Byron UTxO being created or spent: output 1"), "{error}");
+}
+
+/// Preprod's Shelley era began at slot 86 400, on 2022-06-21, and its epochs last 432 000 slots.
+#[test]
+fn preprod_slots_convert_to_their_time() {
+    let config = crate::debugger_engine::debugger_engine::SLOT_CONFIG_PREPROD;
+    let time = |slot: u64| config.zero_time + (slot - config.zero_slot) * config.slot_length as u64;
+    assert_eq!(time(86_400), 1_655_769_600_000);
+    assert_eq!(time(86_400 + 432_000), 1_656_201_600_000);
+}
+
 /// accounting invariants on the real fixture. Every unit the machine spends has to land in exactly one term
 /// node AND in exactly one builtin-or-step row, and our per-step accounting has to agree with the
 /// machine's own `spend_counter` — the counter is the independent witness, which is the only reason
