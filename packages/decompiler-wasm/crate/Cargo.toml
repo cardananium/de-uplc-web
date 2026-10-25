@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # dehosk's aiken branch, on the uplc fork revision the engine runs, from a local checkout
 # until the revision is pushed; then this becomes the GitHub URL again.
-dehosk = { git = "file:///home/evgenii/svc/dehosk-public", rev = "3a822d57d8854304b8f0dd0b8034e101f2324bc3" }
+dehosk = { git = "file:///home/evgenii/svc/dehosk-public", rev = "9d44a077d072136fc60853b2cdfcf2d32747dad1" }
 
 wasm-bindgen = "0.2"
 serde = { version = "1", features = ["derive"] }
