@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # dehosk's aiken branch, on the uplc fork revision the engine runs, from a local checkout
 # until the revision is pushed; then this becomes the GitHub URL again.
-dehosk = { git = "file:///home/evgenii/svc/dehosk-public", rev = "4b97a05c41c952843cdfbf46b729f014f9ccf779" }
+dehosk = { git = "file:///home/evgenii/svc/dehosk-public", rev = "3a822d57d8854304b8f0dd0b8034e101f2324bc3" }
 
 wasm-bindgen = "0.2"
 serde = { version = "1", features = ["derive"] }
@@ -28,3 +28,11 @@ codegen-units = 1
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-Os", "--enable-bulk-memory"]
+
+# The stack-safe PlutusData dehosk and the uplc fork build against.
+[patch.crates-io]
+pallas-addresses = { git = "file:///home/evgenii/svc/pallas", rev = "437295c63d1846a50692129655205ed2182c54f3" }
+pallas-codec = { git = "file:///home/evgenii/svc/pallas", rev = "437295c63d1846a50692129655205ed2182c54f3" }
+pallas-crypto = { git = "file:///home/evgenii/svc/pallas", rev = "437295c63d1846a50692129655205ed2182c54f3" }
+pallas-primitives = { git = "file:///home/evgenii/svc/pallas", rev = "437295c63d1846a50692129655205ed2182c54f3" }
+pallas-traverse = { git = "file:///home/evgenii/svc/pallas", rev = "437295c63d1846a50692129655205ed2182c54f3" }
