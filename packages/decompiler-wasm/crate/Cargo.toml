@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # dehosk's aiken branch, on the uplc fork revision the engine runs, from a local checkout
 # until the revision is pushed; then this becomes the GitHub URL again.
-dehosk = { git = "file:///home/evgenii/svc/dehosk-public", rev = "9d44a077d072136fc60853b2cdfcf2d32747dad1" }
+dehosk = { git = "file:///home/evgenii/svc/dehosk-public", rev = "3e28b7eafbd1a6908441fddb2e2332b9afdb76a5" }
 
 wasm-bindgen = "0.2"
 serde = { version = "1", features = ["derive"] }
@@ -31,8 +31,8 @@ wasm-opt = ["-Os", "--enable-bulk-memory"]
 
 # The stack-safe PlutusData dehosk and the uplc fork build against.
 [patch.crates-io]
-pallas-addresses = { git = "file:///home/evgenii/svc/pallas", rev = "437295c63d1846a50692129655205ed2182c54f3" }
-pallas-codec = { git = "file:///home/evgenii/svc/pallas", rev = "437295c63d1846a50692129655205ed2182c54f3" }
-pallas-crypto = { git = "file:///home/evgenii/svc/pallas", rev = "437295c63d1846a50692129655205ed2182c54f3" }
-pallas-primitives = { git = "file:///home/evgenii/svc/pallas", rev = "437295c63d1846a50692129655205ed2182c54f3" }
-pallas-traverse = { git = "file:///home/evgenii/svc/pallas", rev = "437295c63d1846a50692129655205ed2182c54f3" }
+pallas-addresses = { git = "https://github.com/cardananium/pallas.git", rev = "437295c63d1846a50692129655205ed2182c54f3" }
+pallas-codec = { git = "https://github.com/cardananium/pallas.git", rev = "437295c63d1846a50692129655205ed2182c54f3" }
+pallas-crypto = { git = "https://github.com/cardananium/pallas.git", rev = "437295c63d1846a50692129655205ed2182c54f3" }
+pallas-primitives = { git = "https://github.com/cardananium/pallas.git", rev = "437295c63d1846a50692129655205ed2182c54f3" }
+pallas-traverse = { git = "https://github.com/cardananium/pallas.git", rev = "437295c63d1846a50692129655205ed2182c54f3" }
