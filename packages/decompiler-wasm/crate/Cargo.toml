@@ -9,9 +9,8 @@ license = "Apache-2.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# dehosk's aiken branch, on the uplc fork revision the engine runs, from a local checkout
-# until the revision is pushed; then this becomes the GitHub URL again.
-dehosk = { git = "file:///home/evgenii/svc/dehosk-public", rev = "3e28b7eafbd1a6908441fddb2e2332b9afdb76a5" }
+# dehosk's aiken branch, on the uplc fork revision the engine runs.
+dehosk = { git = "https://github.com/cardananium/dehosk.git", rev = "3e28b7eafbd1a6908441fddb2e2332b9afdb76a5" }
 
 wasm-bindgen = "0.2"
 serde = { version = "1", features = ["derive"] }
